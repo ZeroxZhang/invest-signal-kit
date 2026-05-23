@@ -10,7 +10,7 @@
   <header>
     <div class="header-left">
       <h1>invest-signal-kit</h1>
-      <span class="version">v0.7.0</span>
+      <span class="version">v0.8.0</span>
     </div>
     <nav id="main-nav">
       <button class="nav-btn active" data-tab="signal-lab">Signal Lab</button>
@@ -19,6 +19,7 @@
       <button class="nav-btn" data-tab="portfolio">Portfolio</button>
       <button class="nav-btn" data-tab="rebalance">Rebalance</button>
       <button class="nav-btn" data-tab="backtest">Backtest</button>
+      <button class="nav-btn" data-tab="monte-carlo">Monte Carlo</button>
       <button class="nav-btn" data-tab="importer">Import &amp; Build</button>
       <button class="nav-btn" data-tab="journal">Journal</button>
       <button class="nav-btn" data-tab="decision-memo">Decision Memo</button>
@@ -696,6 +697,94 @@
       <div class="panel" id="bt-blocked-panel">
         <h2>Blocked / Skipped Events</h2>
         <div id="bt-blocked-list" class="blockers-list"></div>
+      </div>
+    </section>
+
+    <!-- ===== Monte Carlo Risk Simulator ===== -->
+    <section id="monte-carlo" class="tab-panel">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Monte Carlo Risk Simulator / Drawdown Lab</h2>
+          <div class="btn-group">
+            <button id="btn-mc-load" class="btn btn-sm">Load Example</button>
+            <button id="btn-mc-run" class="btn btn-sm btn-primary">Run Simulation</button>
+            <button id="btn-mc-stress" class="btn btn-sm">Load Stress Example</button>
+            <button id="btn-mc-copy" class="btn btn-sm">Copy JSON</button>
+          </div>
+        </div>
+        <textarea id="mc-editor" spellcheck="false" placeholder="Paste Monte Carlo config JSON here (initial_capital, num_simulations, horizon_days, seed, method, price_series, weights, cash_weight, rebalance_cadence, stress, drawdown_breach_pct)..."></textarea>
+      </div>
+
+      <!-- Config Summary -->
+      <div class="mc-summary-grid">
+        <div class="panel">
+          <h2>Configuration</h2>
+          <div class="summary-metrics">
+            <div class="ev-metric"><span class="metric-label">Simulations</span><span class="metric-value" id="mc-sims">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Horizon</span><span class="metric-value" id="mc-horizon">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Method</span><span class="metric-value" id="mc-method">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Seed</span><span class="metric-value" id="mc-seed">--</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Equity Bands (at Horizon)</h2>
+          <div class="summary-metrics">
+            <div class="ev-metric"><span class="metric-label">Median</span><span class="metric-value" id="mc-median">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Mean</span><span class="metric-value" id="mc-mean">--</span></div>
+            <div class="ev-metric"><span class="metric-label">P5 (downside)</span><span class="metric-value" id="mc-p5">--</span></div>
+            <div class="ev-metric"><span class="metric-label">P95 (upside)</span><span class="metric-value" id="mc-p95">--</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Risk Metrics</h2>
+          <div class="summary-metrics">
+            <div class="ev-metric"><span class="metric-label">Prob of Loss</span><span class="metric-value" id="mc-prob-loss">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Prob DD Breach</span><span class="metric-value" id="mc-prob-dd">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Max DD (P95)</span><span class="metric-value" id="mc-dd-p95">--</span></div>
+            <div class="ev-metric"><span class="metric-label">CVaR (5%)</span><span class="metric-value" id="mc-cvar">--</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stress Overlay Info -->
+      <div class="panel" id="mc-stress-panel" style="display:none">
+        <h2>Stress Overlay</h2>
+        <div class="summary-metrics" id="mc-stress-info"></div>
+      </div>
+
+      <!-- Sample Paths Visualization -->
+      <div class="panel">
+        <h2>Simulation Paths (sample)</h2>
+        <div id="mc-paths-chart" class="mc-paths-chart"></div>
+      </div>
+
+      <!-- Percentile Table -->
+      <div class="panel">
+        <h2>Percentile Table</h2>
+        <div class="table-container">
+          <table class="data-table" id="mc-pct-table">
+            <thead>
+              <tr><th>Percentile</th><th>Equity</th><th>Return</th></tr>
+            </thead>
+            <tbody id="mc-pct-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Worst Path -->
+      <div class="panel">
+        <h2>Worst Path Summary</h2>
+        <div class="summary-metrics">
+          <div class="ev-metric"><span class="metric-label">Worst Final Equity</span><span class="metric-value" id="mc-worst-eq">--</span></div>
+          <div class="ev-metric"><span class="metric-label">Worst Return</span><span class="metric-value" id="mc-worst-ret">--</span></div>
+          <div class="ev-metric"><span class="metric-label">Worst Max Drawdown</span><span class="metric-value" id="mc-worst-dd">--</span></div>
+        </div>
+      </div>
+
+      <!-- Full Distribution Histogram -->
+      <div class="panel">
+        <h2>Final Equity Distribution</h2>
+        <div id="mc-histogram" class="mc-histogram"></div>
       </div>
     </section>
 

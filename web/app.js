@@ -2041,6 +2041,17 @@ function populateExamples() {
         return;
       }
 
+      // Monte Carlo examples load into Monte Carlo tab
+      if (ex.type === 'monte-carlo') {
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        document.querySelector('[data-tab="monte-carlo"]').classList.add('active');
+        document.getElementById('monte-carlo').classList.add('active');
+        document.getElementById('mc-editor').value = JSON.stringify(ex.data, null, 2);
+        runMcSimulation();
+        return;
+      }
+
       // Switch to Signal Lab
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -2984,6 +2995,432 @@ document.addEventListener('DOMContentLoaded', () => {
       data: BACKTEST_EXAMPLE,
     };
     populateExamples();
+  }
+
+  // =====================================================================
+  // Monte Carlo Risk Simulator
+  // =====================================================================
+
+  // Seeded PRNG (xorshift128)
+  function createRng(seed) {
+    let s = seed | 0 || 1;
+    function next() {
+      s ^= s << 13; s ^= s >> 17; s ^= s << 5;
+      return (s >>> 0) / 4294967296;
+    }
+    // Warm up
+    for (let i = 0; i < 10; i++) next();
+    return {
+      random: next,
+      gauss: function(mu, sigma) {
+        // Box-Muller transform
+        let u1, u2;
+        do { u1 = next(); } while (u1 === 0);
+        u2 = next();
+        const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+        return mu + sigma * z;
+      },
+      choice: function(arr) {
+        return arr[Math.floor(next() * arr.length)];
+      }
+    };
+  }
+
+  function computeLogReturns(prices) {
+    const rets = [];
+    for (let i = 1; i < prices.length; i++) {
+      if (prices[i-1] > 0 && prices[i] > 0) {
+        rets.push(Math.log(prices[i] / prices[i-1]));
+      } else {
+        rets.push(0);
+      }
+    }
+    return rets;
+  }
+
+  function percentile(sorted, p) {
+    if (!sorted.length) return 0;
+    const k = (p / 100) * (sorted.length - 1);
+    const f = Math.floor(k);
+    const c = Math.min(f + 1, sorted.length - 1);
+    const d = k - f;
+    return sorted[f] * (1 - d) + sorted[c] * d;
+  }
+
+  function runMonteCarloJS(config) {
+    const rng = createRng(config.seed || 42);
+    const numSims = config.num_simulations || 1000;
+    const horizon = config.horizon_days || 252;
+    const initial = config.initial_capital || 100000;
+    const method = config.method || 'bootstrap';
+    const cashW = config.cash_weight || 0;
+    const ddBreach = config.drawdown_breach_pct || 20;
+    const stress = config.stress || {};
+    const shockPct = stress.shock_pct || 0;
+    const volMult = stress.vol_multiplier || 1;
+    const driftAdj = (stress.drift_adjust_pct || 0) / 100 / 252;
+
+    // Build return series
+    const priceSeries = config.price_series || {};
+    const assetNames = Object.keys(priceSeries).sort();
+    if (assetNames.length === 0) return null;
+
+    const bootstrapPools = {};
+    const paramStats = {};
+    for (const asset of assetNames) {
+      const bars = (priceSeries[asset] || []).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      const closes = bars.map(b => b.close || 0);
+      const rets = computeLogReturns(closes);
+      if (rets.length === 0) rets.push(0);
+      bootstrapPools[asset] = rets;
+      const mean = rets.reduce((s, r) => s + r, 0) / rets.length;
+      const variance = rets.length > 1 ? rets.reduce((s, r) => s + (r - mean) ** 2, 0) / (rets.length - 1) : 0;
+      paramStats[asset] = { mean, std: Math.sqrt(variance) };
+    }
+
+    // Weights
+    let weightMap = {};
+    if (config.weights && config.weights.length) {
+      for (const w of config.weights) weightMap[w.asset] = w.weight || 0;
+    } else {
+      const eq = 1 / assetNames.length;
+      for (const a of assetNames) weightMap[a] = eq;
+    }
+    // Normalize
+    let riskyTotal = assetNames.reduce((s, a) => s + (weightMap[a] || 0), 0);
+    let cashWAdj = cashW;
+    if (riskyTotal + cashWAdj > 0) {
+      const scale = 1 - cashWAdj;
+      if (riskyTotal > 0) {
+        for (const a of assetNames) weightMap[a] = ((weightMap[a] || 0) / riskyTotal) * scale;
+      } else {
+        cashWAdj = 1;
+      }
+    } else {
+      cashWAdj = 1;
+    }
+
+    const rebalMap = { daily: 1, weekly: 5, monthly: 21, never: 0 };
+    const rebalOff = rebalMap[config.rebalance_cadence || 'monthly'] || 21;
+
+    // Run sims
+    const allFinal = [];
+    const allMaxDD = [];
+    let breachCount = 0;
+    const samplePaths = [];
+    const sampleCount = 50;
+
+    for (let si = 0; si < numSims; si++) {
+      let equity = initial;
+      let peak = equity;
+      let maxDD = 0;
+      const path = [equity];
+
+      const assetVals = {};
+      for (const a of assetNames) assetVals[a] = equity * (weightMap[a] || 0);
+      let cashVal = equity * cashWAdj;
+
+      for (let day = 0; day < horizon; day++) {
+        const doRebal = rebalOff > 0 && day > 0 && day % rebalOff === 0;
+        if (doRebal) {
+          const total = cashVal + Object.values(assetVals).reduce((s, v) => s + v, 0);
+          for (const a of assetNames) assetVals[a] = total * (weightMap[a] || 0);
+          cashVal = total * cashWAdj;
+        }
+
+        for (const a of assetNames) {
+          const w = weightMap[a] || 0;
+          if (w <= 0) continue;
+
+          let ret;
+          if (method === 'bootstrap') {
+            ret = rng.choice(bootstrapPools[a]);
+          } else {
+            const { mean, std } = paramStats[a];
+            ret = std > 0 ? rng.gauss(mean, std) : mean;
+          }
+
+          ret *= volMult;
+          ret += driftAdj;
+          if (day === 0 && shockPct !== 0) ret += shockPct;
+
+          assetVals[a] *= Math.exp(ret);
+        }
+
+        equity = cashVal + Object.values(assetVals).reduce((s, v) => s + v, 0);
+        if (equity > peak) peak = equity;
+        const dd = peak > 0 ? ((peak - equity) / peak * 100) : 0;
+        if (dd > maxDD) maxDD = dd;
+        path.push(equity);
+      }
+
+      allFinal.push(equity);
+      allMaxDD.push(maxDD);
+      if (maxDD >= ddBreach) breachCount++;
+      if (si < sampleCount) samplePaths.push(path);
+    }
+
+    const sortedFinal = allFinal.slice().sort((a, b) => a - b);
+    const sortedDD = allMaxDD.slice().sort((a, b) => a - b);
+    const returns = allFinal.map(e => (e - initial) / initial * 100);
+    const sortedReturns = returns.slice().sort((a, b) => a - b);
+
+    // CVaR
+    const varIdx = Math.max(1, Math.floor(sortedReturns.length * 0.05));
+    const worst5 = sortedReturns.slice(0, varIdx);
+    const cvar = worst5.reduce((s, r) => s + r, 0) / worst5.length;
+
+    // Worst path
+    const worstFinal = Math.min(...allFinal);
+    const worstDD = Math.max(...allMaxDD);
+    const worstRet = Math.min(...returns);
+
+    // Percentile table
+    const confLevels = config.confidence_levels || [5, 25, 50, 75, 95];
+    const pctTable = confLevels.map(p => ({
+      percentile: p,
+      equity: percentile(sortedFinal, p),
+      return_pct: percentile(sortedReturns, p),
+    }));
+
+    return {
+      initial_capital: initial,
+      num_simulations: numSims,
+      horizon_days: horizon,
+      seed: config.seed || 42,
+      method: method,
+      rebalance_cadence: config.rebalance_cadence || 'monthly',
+      cash_weight: cashW,
+      assets: assetNames,
+      weights: weightMap,
+      stress_shock_pct: shockPct,
+      stress_vol_multiplier: volMult,
+      stress_drift_adjust_pct: stress.drift_adjust_pct || 0,
+      median_final_equity: percentile(sortedFinal, 50),
+      mean_final_equity: allFinal.reduce((s, v) => s + v, 0) / allFinal.length,
+      p5_equity: percentile(sortedFinal, 5),
+      p25_equity: percentile(sortedFinal, 25),
+      p75_equity: percentile(sortedFinal, 75),
+      p95_equity: percentile(sortedFinal, 95),
+      median_return_pct: percentile(sortedReturns, 50),
+      mean_return_pct: sortedReturns.reduce((s, r) => s + r, 0) / sortedReturns.length,
+      prob_loss: returns.filter(r => r < 0).length / returns.length * 100,
+      prob_drawdown_breach: breachCount / numSims * 100,
+      max_drawdown_median: percentile(sortedDD, 50),
+      max_drawdown_p95: percentile(sortedDD, 95),
+      max_drawdown_worst: worstDD,
+      expected_shortfall_pct: cvar,
+      worst_path_final_equity: worstFinal,
+      worst_path_max_drawdown_pct: worstDD,
+      worst_path_return_pct: worstRet,
+      percentile_table: pctTable,
+      sample_paths: samplePaths,
+    };
+  }
+
+  const MC_EXAMPLE = {
+    initial_capital: 100000,
+    num_simulations: 500,
+    horizon_days: 63,
+    seed: 42,
+    method: 'bootstrap',
+    price_series: {
+      AAPL: [
+        {date:'2026-01-02',close:182},{date:'2026-01-03',close:184},{date:'2026-01-06',close:187},
+        {date:'2026-01-07',close:189},{date:'2026-01-08',close:191},{date:'2026-01-09',close:192},
+        {date:'2026-01-12',close:194},{date:'2026-01-13',close:195},{date:'2026-01-14',close:196},
+        {date:'2026-01-15',close:197}
+      ],
+      MSFT: [
+        {date:'2026-01-02',close:372},{date:'2026-01-03',close:375},{date:'2026-01-06',close:377},
+        {date:'2026-01-07',close:378},{date:'2026-01-08',close:380},{date:'2026-01-09',close:381},
+        {date:'2026-01-12',close:382},{date:'2026-01-13',close:383},{date:'2026-01-14',close:384},
+        {date:'2026-01-15',close:385}
+      ],
+      TSLA: [
+        {date:'2026-01-02',close:253},{date:'2026-01-03',close:256},{date:'2026-01-06',close:258},
+        {date:'2026-01-07',close:260},{date:'2026-01-08',close:262},{date:'2026-01-09',close:263},
+        {date:'2026-01-12',close:264},{date:'2026-01-13',close:265},{date:'2026-01-14',close:266},
+        {date:'2026-01-15',close:267}
+      ]
+    },
+    weights: [{asset:'AAPL',weight:0.40},{asset:'MSFT',weight:0.35},{asset:'TSLA',weight:0.25}],
+    cash_weight: 0,
+    rebalance_cadence: 'monthly',
+    stress: {shock_pct:0, vol_multiplier:1, drift_adjust_pct:0},
+    drawdown_breach_pct: 15,
+    confidence_levels: [5, 25, 50, 75, 95],
+  };
+
+  const MC_STRESS_EXAMPLE = {
+    initial_capital: 100000,
+    num_simulations: 500,
+    horizon_days: 63,
+    seed: 42,
+    method: 'parametric',
+    price_series: MC_EXAMPLE.price_series,
+    weights: [{asset:'AAPL',weight:0.60},{asset:'MSFT',weight:0.40}],
+    cash_weight: 0,
+    rebalance_cadence: 'monthly',
+    stress: {shock_pct:-0.10, vol_multiplier:1.5, drift_adjust_pct:-3.0},
+    drawdown_breach_pct: 20,
+    confidence_levels: [5, 25, 50, 75, 95],
+  };
+
+  function fmtMc(v) { return v != null ? v.toLocaleString(undefined, {maximumFractionDigits:2}) : '--'; }
+  function fmtpMc(v) { return v != null ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%' : '--'; }
+
+  function displayMcResult(r) {
+    if (!r) return;
+    document.getElementById('mc-sims').textContent = r.num_simulations.toLocaleString();
+    document.getElementById('mc-horizon').textContent = r.horizon_days + ' days';
+    document.getElementById('mc-method').textContent = r.method;
+    document.getElementById('mc-seed').textContent = r.seed;
+
+    document.getElementById('mc-median').textContent = fmtMc(r.median_final_equity);
+    document.getElementById('mc-mean').textContent = fmtMc(r.mean_final_equity);
+    document.getElementById('mc-p5').textContent = fmtMc(r.p5_equity);
+    document.getElementById('mc-p95').textContent = fmtMc(r.p95_equity);
+
+    const probLossEl = document.getElementById('mc-prob-loss');
+    probLossEl.textContent = r.prob_loss.toFixed(1) + '%';
+    probLossEl.className = 'metric-value ' + (r.prob_loss > 50 ? 'negative' : r.prob_loss > 0 ? '' : 'positive');
+
+    document.getElementById('mc-prob-dd').textContent = r.prob_drawdown_breach.toFixed(1) + '%';
+    document.getElementById('mc-dd-p95').textContent = r.max_drawdown_p95.toFixed(2) + '%';
+    document.getElementById('mc-cvar').textContent = fmtpMc(r.expected_shortfall_pct);
+
+    document.getElementById('mc-worst-eq').textContent = fmtMc(r.worst_path_final_equity);
+    document.getElementById('mc-worst-ret').textContent = fmtpMc(r.worst_path_return_pct);
+    document.getElementById('mc-worst-dd').textContent = r.worst_path_max_drawdown_pct.toFixed(2) + '%';
+
+    // Stress panel
+    const stressPanel = document.getElementById('mc-stress-panel');
+    if (r.stress_shock_pct !== 0 || r.stress_vol_multiplier !== 1 || r.stress_drift_adjust_pct !== 0) {
+      stressPanel.style.display = '';
+      const info = document.getElementById('mc-stress-info');
+      let html = '';
+      if (r.stress_shock_pct !== 0) html += `<div class="ev-metric"><span class="metric-label">One-Time Shock</span><span class="metric-value">${(r.stress_shock_pct*100).toFixed(1)}%</span></div>`;
+      if (r.stress_vol_multiplier !== 1) html += `<div class="ev-metric"><span class="metric-label">Vol Multiplier</span><span class="metric-value">${r.stress_vol_multiplier.toFixed(2)}x</span></div>`;
+      if (r.stress_drift_adjust_pct !== 0) html += `<div class="ev-metric"><span class="metric-label">Drift Adjustment</span><span class="metric-value">${r.stress_drift_adjust_pct >= 0 ? '+' : ''}${r.stress_drift_adjust_pct.toFixed(2)}% ann.</span></div>`;
+      info.innerHTML = html;
+    } else {
+      stressPanel.style.display = 'none';
+    }
+
+    // Percentile table
+    const pctTbody = document.getElementById('mc-pct-tbody');
+    pctTbody.innerHTML = r.percentile_table.map(row =>
+      `<tr><td>P${row.percentile}</td><td>${fmtMc(row.equity)}</td><td>${fmtpMc(row.return_pct)}</td></tr>`
+    ).join('');
+
+    // Sample paths chart
+    const chartDiv = document.getElementById('mc-paths-chart');
+    if (r.sample_paths && r.sample_paths.length) {
+      const allVals = r.sample_paths.flat();
+      const minV = Math.min(...allVals);
+      const maxV = Math.max(...allVals);
+      const range = maxV - minV || 1;
+      const barW = 50;
+      // Show every Nth path to avoid overload
+      const step = Math.max(1, Math.floor(r.sample_paths.length / 20));
+      let html = '<div style="font-family:var(--font-mono);font-size:10px;line-height:1.3;overflow-x:auto">';
+      for (let i = 0; i < r.sample_paths.length; i += step) {
+        const path = r.sample_paths[i];
+        // Show start, midpoint, and end
+        const startEq = path[0];
+        const midEq = path[Math.floor(path.length / 2)];
+        const endEq = path[path.length - 1];
+        const endBarLen = Math.round(((endEq - minV) / range) * barW);
+        const bar = '█'.repeat(endBarLen) + '░'.repeat(barW - endBarLen);
+        const retPct = ((endEq - startEq) / startEq * 100).toFixed(1);
+        const color = endEq >= startEq ? 'var(--green)' : 'var(--red)';
+        html += `<div>Sim ${i+1} <span style="color:${color}">${bar}</span> ${fmtMc(endEq)} (${retPct}%)</div>`;
+      }
+      html += '</div>';
+      chartDiv.innerHTML = html;
+    } else {
+      chartDiv.innerHTML = '<p class="placeholder-text">No simulation data.</p>';
+    }
+
+    // Histogram
+    const histDiv = document.getElementById('mc-histogram');
+    if (r.sample_paths && r.sample_paths.length) {
+      const finals = r.sample_paths.map(p => p[p.length - 1]);
+      const minF = Math.min(...finals);
+      const maxF = Math.max(...finals);
+      const bins = 20;
+      const binW = (maxF - minF) / bins || 1;
+      const counts = new Array(bins).fill(0);
+      for (const v of finals) {
+        const idx = Math.min(bins - 1, Math.floor((v - minF) / binW));
+        counts[idx]++;
+      }
+      const maxCount = Math.max(...counts);
+      const barMax = 40;
+      let html = '<div style="font-family:var(--font-mono);font-size:11px;line-height:1.4">';
+      for (let i = 0; i < bins; i++) {
+        const lo = minF + i * binW;
+        const hi = lo + binW;
+        const barLen = Math.round((counts[i] / maxCount) * barMax);
+        const bar = '█'.repeat(barLen);
+        html += `<div>${fmtMc(lo)}-${fmtMc(hi)} <span style="color:var(--accent)">${bar}</span> ${counts[i]}</div>`;
+      }
+      html += '</div>';
+      histDiv.innerHTML = html;
+    }
+  }
+
+  function runMcSimulation() {
+    const editor = document.getElementById('mc-editor');
+    let data;
+    try {
+      data = JSON.parse(editor.value);
+    } catch (e) {
+      alert('Invalid JSON: ' + e.message);
+      return;
+    }
+    const result = runMonteCarloJS(data);
+    if (!result) {
+      alert('No price_series found in config.');
+      return;
+    }
+    window._lastMcResult = result;
+    displayMcResult(result);
+  }
+
+  document.getElementById('btn-mc-load').addEventListener('click', () => {
+    document.getElementById('mc-editor').value = JSON.stringify(MC_EXAMPLE, null, 2);
+    runMcSimulation();
+  });
+
+  document.getElementById('btn-mc-stress').addEventListener('click', () => {
+    document.getElementById('mc-editor').value = JSON.stringify(MC_STRESS_EXAMPLE, null, 2);
+    runMcSimulation();
+  });
+
+  document.getElementById('btn-mc-run').addEventListener('click', runMcSimulation);
+
+  document.getElementById('btn-mc-copy').addEventListener('click', () => {
+    if (window._lastMcResult) {
+      navigator.clipboard.writeText(JSON.stringify(window._lastMcResult, null, 2));
+    }
+  });
+
+  // Add Monte Carlo example to EXAMPLES gallery
+  if (typeof EXAMPLES !== 'undefined') {
+    EXAMPLES.monte_carlo = {
+      name: 'Monte Carlo Risk Simulator',
+      type: 'monte-carlo',
+      description: 'Portfolio risk simulation with bootstrap resampling, multi-asset weights, and stress overlays. Deterministic seeded output.',
+      data: MC_EXAMPLE,
+    };
+    EXAMPLES.monte_carlo_stress = {
+      name: 'Monte Carlo Stress Test',
+      type: 'monte-carlo',
+      description: 'Parametric simulation with -10% shock, 1.5x volatility, and -3% drift. Demonstrates stress overlay impact.',
+      data: MC_STRESS_EXAMPLE,
+    };
   }
 
   // =====================================================================

@@ -967,6 +967,39 @@ footer p {
   .bt-summary-grid { grid-template-columns: 1fr; }
 }
 
+.mc-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+.mc-paths-chart {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.mc-histogram {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-x: auto;
+}
+
+@media (max-width: 900px) {
+  .mc-summary-grid { grid-template-columns: 1fr; }
+}
+
 .import-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;

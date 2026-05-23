@@ -97,6 +97,19 @@ Signal replay lab with:
 - Event log showing all executed events with values and costs
 - Blocked/skipped events with clear block reasons (confidence gates, insufficient cash, position limits)
 
+### Monte Carlo
+
+Monte Carlo risk simulator / drawdown lab with:
+- Config editor (paste or load example)
+- Summary metrics: configuration (simulations, horizon, method, seed), equity bands (median, mean, P5, P95), risk metrics (prob of loss, prob drawdown breach, CVaR)
+- Stress overlay display when active (shock, vol multiplier, drift)
+- Sample path visualization (ASCII bar chart showing ~20 simulation endpoints)
+- Final equity distribution histogram (20-bin ASCII)
+- Percentile table (P5 through P95)
+- Worst path summary (worst equity, worst return, worst drawdown)
+- Load Example and Load Stress Example buttons
+- Client-side deterministic simulation with seeded PRNG
+
 ### Decision Memo
 
 Generate a comprehensive Markdown decision memo that combines:

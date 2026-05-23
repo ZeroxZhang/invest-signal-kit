@@ -128,12 +128,38 @@ def main(argv=None) -> int:
     p_bs.add_argument("--asset-name", default="IMPORTED",
                       help="Asset name for single-asset price imports (default: IMPORTED)")
 
+    # --- monte-carlo ---
+    p_mc = sub.add_parser("monte-carlo", help="Run Monte Carlo risk simulation")
+    p_mc.add_argument("file", help="Path to Monte Carlo config JSON or backtest scenario JSON")
+    p_mc.add_argument("--output", "-o", help="Output file path (default: stdout)")
+    p_mc.add_argument("--format", choices=["json", "markdown", "md"], default="json",
+                      help="Output format (default: json)")
+    p_mc.add_argument("--simulations", type=int, default=None,
+                      help="Number of simulations (default: from config or 1000)")
+    p_mc.add_argument("--horizon", type=int, default=None,
+                      help="Horizon in trading days (default: from config or 252)")
+    p_mc.add_argument("--seed", type=int, default=None,
+                      help="Random seed (default: from config or 42)")
+    p_mc.add_argument("--method", choices=["bootstrap", "parametric"], default=None,
+                      help="Simulation method (default: from config or bootstrap)")
+    p_mc.add_argument("--weights", default=None,
+                      help='Portfolio weights as "AAPL:0.5,MSFT:0.3,TSLA:0.2"')
+    p_mc.add_argument("--cash-weight", type=float, default=None,
+                      help="Cash allocation fraction 0-1 (default: 0)")
+    p_mc.add_argument("--rebalance", choices=["daily", "weekly", "monthly", "never"],
+                      default=None, help="Rebalance cadence (default: from config or monthly)")
+    p_mc.add_argument("--drawdown-breach", type=float, default=None,
+                      help="Drawdown breach threshold %% (default: from config or 20)")
+
     # --- serve ---
     p_serve = sub.add_parser("serve", help="Serve the web UI locally")
     p_serve.add_argument("--port", type=int, default=8765, help="Port to listen on (default: 8765)")
     p_serve.add_argument("--bind", default="127.0.0.1", help="Address to bind (default: 127.0.0.1)")
 
     args = parser.parse_args(argv)
+
+    if args.command == "monte-carlo":
+        return _cmd_monte_carlo(args)
 
     if args.command == "serve":
         return _cmd_serve(args.port, args.bind)
@@ -864,6 +890,81 @@ def _cmd_build_scenario(args, output: str | None, fmt: str) -> int:
         out = render_scenario_markdown(result)
     else:
         out = json.dumps(result.scenario, indent=2, ensure_ascii=False)
+
+    if output:
+        Path(output).write_text(out, encoding="utf-8")
+        print(f"Written to {output}")
+    else:
+        print(out)
+    return 0
+
+
+def _cmd_monte_carlo(args) -> int:
+    """Run Monte Carlo risk simulation."""
+    from .monte_carlo import (
+        load_monte_carlo_config,
+        run_monte_carlo,
+        render_monte_carlo_markdown,
+        _result_to_dict,
+        PortfolioWeight,
+    )
+
+    file_path = args.file
+    output = getattr(args, "output", None)
+    fmt = getattr(args, "format", "json")
+
+    try:
+        text = Path(file_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        print(f"Error: Invalid JSON: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        config, return_series = load_monte_carlo_config(data)
+    except (ValueError, KeyError, TypeError) as exc:
+        print(f"Error loading Monte Carlo config: {exc}", file=sys.stderr)
+        return 1
+
+    # CLI overrides
+    if args.simulations is not None:
+        config.num_simulations = args.simulations
+    if args.horizon is not None:
+        config.horizon_days = args.horizon
+    if args.seed is not None:
+        config.seed = args.seed
+    if args.method is not None:
+        config.method = args.method
+    if args.cash_weight is not None:
+        config.cash_weight = args.cash_weight
+    if args.rebalance is not None:
+        config.rebalance_cadence = args.rebalance
+    if args.drawdown_breach is not None:
+        config.drawdown_breach_pct = args.drawdown_breach
+    if args.weights is not None:
+        config.weights = []
+        for pair in args.weights.split(","):
+            pair = pair.strip()
+            if ":" in pair:
+                asset, w = pair.split(":", 1)
+                config.weights.append(PortfolioWeight(
+                    asset=asset.strip(), weight=float(w.strip())
+                ))
+
+    if not return_series:
+        print("Error: no price_series found in config file", file=sys.stderr)
+        return 1
+
+    result = run_monte_carlo(config, return_series)
+
+    if fmt in ("markdown", "md"):
+        out = render_monte_carlo_markdown(result)
+    else:
+        out = json.dumps(_result_to_dict(result), indent=2, ensure_ascii=False)
 
     if output:
         Path(output).write_text(out, encoding="utf-8")

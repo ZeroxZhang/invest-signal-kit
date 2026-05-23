@@ -120,6 +120,7 @@ invest-signal-kit serve --port 8765
 | `calibrate` | Calibrate decision scores against realized outcomes | `python3 -m invest_signal_kit calibrate examples/decision_journal.json` |
 | `rebalance` | Generate rebalance/trade plan from holdings, targets, and candidates | `python3 -m invest_signal_kit rebalance examples/rebalance_plan.json` |
 | `backtest` | Run backtest / signal replay from a scenario JSON | `python3 -m invest_signal_kit backtest examples/backtest_scenario.json` |
+| `monte-carlo` | Run Monte Carlo risk simulation (bootstrap/parametric, stress overlays) | `python3 -m invest_signal_kit monte-carlo examples/monte_carlo_config.json` |
 | `import` | Import CSV/JSON data (price, signal, holdings, benchmark) | `python3 -m invest_signal_kit import price examples/prices.csv` |
 | `build-scenario` | Build a backtest scenario from imported data files | `python3 -m invest_signal_kit build-scenario --prices examples/prices.csv --signals examples/signals.csv` |
 | `serve` | Launch the local browser workstation | `python3 -m invest_signal_kit serve --port 8765` |
@@ -371,7 +372,61 @@ The backtest engine:
 
 Or use the **Backtest** tab in the web UI to load, edit, and run backtest scenarios interactively.
 
-### 9. Data Import & Scenario Builder
+### 9. Monte Carlo Risk Simulator / Drawdown Lab
+
+Run deterministic Monte Carlo simulations for portfolio risk analysis with bootstrap resampling or parametric normal simulation:
+
+```bash
+# JSON output (default)
+python3 -m invest_signal_kit monte-carlo examples/monte_carlo_config.json
+
+# Markdown report
+python3 -m invest_signal_kit monte-carlo examples/monte_carlo_config.json --format markdown
+
+# Save to file
+python3 -m invest_signal_kit monte-carlo examples/monte_carlo_config.json -o risk_report.md
+
+# Stress overlay scenario
+python3 -m invest_signal_kit monte-carlo examples/monte_carlo_stress.json --format markdown
+
+# CLI overrides
+python3 -m invest_signal_kit monte-carlo examples/monte_carlo_config.json \
+  --simulations 2000 --seed 123 --method parametric --horizon 126 \
+  --weights "AAPL:0.5,MSFT:0.3,TSLA:0.2" --cash-weight 0.1 \
+  --rebalance weekly --drawdown-breach 25
+```
+
+The Monte Carlo simulator:
+- Loads return series from price series or backtest scenario JSON
+- Supports bootstrap resampling (historical returns) and parametric normal simulation
+- Multi-asset portfolio with explicit weights, optional cash allocation
+- Rebalancing cadence: daily, weekly, monthly, or never
+- Stress overlays: one-time shock, volatility multiplier, drift adjustment
+- Metrics: median/P5/P95 equity bands, probability of loss, probability of drawdown breach, max drawdown distribution, expected shortfall (CVaR), worst path summary
+- Deterministic output with seeded randomness
+
+Or use the **Monte Carlo** tab in the web UI to load, edit, and run simulations interactively with path visualization.
+
+**Full workflow — CSV to backtest to Monte Carlo:**
+
+```bash
+# 1. Import price data
+python3 -m invest_signal_kit import price examples/prices.csv -o prices.json
+
+# 2. Import signal events
+python3 -m invest_signal_kit import signal examples/signals.csv -o signals.json
+
+# 3. Build backtest scenario
+python3 -m invest_signal_kit build-scenario --prices examples/prices.csv --signals examples/signals.csv --benchmark examples/benchmark.csv -o scenario.json
+
+# 4. Run backtest
+python3 -m invest_signal_kit backtest scenario.json --format markdown -o backtest_report.md
+
+# 5. Run Monte Carlo risk simulation on the same price data
+python3 -m invest_signal_kit monte-carlo examples/monte_carlo_config.json --format markdown -o risk_report.md
+```
+
+### 10. Data Import & Scenario Builder
 
 Import broker/export CSV files and build backtest scenarios without hand-editing JSON.
 
@@ -636,6 +691,8 @@ All formulas are documented in [docs/framework.md](docs/framework.md). All input
 | `examples/decision_journal.json` | journal | Multi-decision journal with lifecycle, calibration, and attribution |
 | `examples/rebalance_plan.json` | rebalance | Rebalance plan with targets, candidates, constraints, and cost assumptions |
 | `examples/backtest_scenario.json` | backtest | Multi-asset backtest with signals, benchmark, costs, and risk rules |
+| `examples/monte_carlo_config.json` | monte-carlo | Monte Carlo config with 3-asset portfolio, bootstrap method, monthly rebalance |
+| `examples/monte_carlo_stress.json` | monte-carlo | Stress overlay scenario: -10% shock, 1.5x vol, -3% drift, parametric method |
 | `examples/prices.csv` | CSV | Multi-asset price data for import (OHLCV with asset column) |
 | `examples/signals.csv` | CSV | Signal events for import |
 | `examples/holdings.csv` | CSV | Portfolio holdings for import |

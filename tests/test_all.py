@@ -3872,5 +3872,458 @@ class TestBuildScenarioCLI(unittest.TestCase):
         self.assertEqual(result.event_count, 5)
 
 
+# =========================================================================
+# Monte Carlo Risk Simulator Tests
+# =========================================================================
+
+class TestMonteCarloLoading(unittest.TestCase):
+    """Test Monte Carlo config and return series loading."""
+
+    def test_load_config(self):
+        from invest_signal_kit.monte_carlo import load_monte_carlo_config
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        self.assertEqual(config.num_simulations, 500)
+        self.assertEqual(config.horizon_days, 63)
+        self.assertEqual(config.seed, 42)
+        self.assertEqual(config.method, "bootstrap")
+        self.assertEqual(len(series), 3)
+        self.assertIn("AAPL", series)
+        self.assertIn("MSFT", series)
+        self.assertIn("TSLA", series)
+
+    def test_load_stress_config(self):
+        from invest_signal_kit.monte_carlo import load_monte_carlo_config
+        data = json.loads((EXAMPLES / "monte_carlo_stress.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        self.assertEqual(config.method, "parametric")
+        self.assertAlmostEqual(config.stress.shock_pct, -0.10)
+        self.assertAlmostEqual(config.stress.vol_multiplier, 1.5)
+        self.assertAlmostEqual(config.stress.drift_adjust_pct, -3.0)
+
+    def test_return_series_properties(self):
+        from invest_signal_kit.monte_carlo import load_return_series_from_prices
+        prices = [
+            {"date": "2026-01-02", "close": 100},
+            {"date": "2026-01-03", "close": 105},
+            {"date": "2026-01-06", "close": 110},
+        ]
+        rs = load_return_series_from_prices("TEST", prices)
+        self.assertEqual(rs.asset, "TEST")
+        self.assertEqual(len(rs.log_returns), 2)
+        self.assertGreater(rs.mean_return, 0)
+        self.assertGreater(rs.std_return, 0)
+
+    def test_empty_price_series(self):
+        from invest_signal_kit.monte_carlo import load_return_series_from_prices
+        rs = load_return_series_from_prices("EMPTY", [])
+        self.assertEqual(rs.log_returns, [])
+        self.assertAlmostEqual(rs.mean_return, 0.0)
+
+
+class TestMonteCarloSimulation(unittest.TestCase):
+    """Test Monte Carlo simulation engine."""
+
+    def test_determinism(self):
+        """Same seed produces identical results."""
+        from invest_signal_kit.monte_carlo import (
+            load_monte_carlo_config, run_monte_carlo,
+        )
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        config.num_simulations = 100
+
+        r1 = run_monte_carlo(config, series)
+        r2 = run_monte_carlo(config, series)
+        self.assertEqual(r1.median_final_equity, r2.median_final_equity)
+        self.assertEqual(r1.p5_equity, r2.p5_equity)
+        self.assertEqual(r1.p95_equity, r2.p95_equity)
+        self.assertEqual(r1.prob_loss, r2.prob_loss)
+        self.assertEqual(r1.final_equities, r2.final_equities)
+
+    def test_different_seeds_differ(self):
+        """Different seeds produce different results."""
+        from invest_signal_kit.monte_carlo import (
+            load_monte_carlo_config, run_monte_carlo,
+        )
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        config.num_simulations = 100
+        config.seed = 42
+        r1 = run_monte_carlo(config, series)
+        config.seed = 99
+        r2 = run_monte_carlo(config, series)
+        self.assertNotEqual(r1.final_equities, r2.final_equities)
+
+    def test_bootstrap_method(self):
+        from invest_signal_kit.monte_carlo import (
+            load_monte_carlo_config, run_monte_carlo,
+        )
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        config.num_simulations = 50
+        config.method = "bootstrap"
+        result = run_monte_carlo(config, series)
+        self.assertEqual(result.method, "bootstrap")
+        self.assertEqual(len(result.final_equities), 50)
+
+    def test_parametric_method(self):
+        from invest_signal_kit.monte_carlo import (
+            load_monte_carlo_config, run_monte_carlo,
+        )
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        config.num_simulations = 50
+        config.method = "parametric"
+        result = run_monte_carlo(config, series)
+        self.assertEqual(result.method, "parametric")
+        self.assertEqual(len(result.final_equities), 50)
+
+    def test_single_asset(self):
+        from invest_signal_kit.monte_carlo import (
+            load_monte_carlo_config, run_monte_carlo,
+        )
+        data = {
+            "initial_capital": 50000,
+            "num_simulations": 50,
+            "horizon_days": 21,
+            "seed": 7,
+            "method": "bootstrap",
+            "price_series": {
+                "SPY": [
+                    {"date": "2026-01-02", "close": 500},
+                    {"date": "2026-01-03", "close": 505},
+                    {"date": "2026-01-06", "close": 503},
+                    {"date": "2026-01-07", "close": 508},
+                    {"date": "2026-01-08", "close": 510},
+                ]
+            },
+        }
+        config, series = load_monte_carlo_config(data)
+        result = run_monte_carlo(config, series)
+        self.assertEqual(len(result.assets), 1)
+        self.assertIn("SPY", result.weights)
+        self.assertAlmostEqual(result.weights["SPY"], 1.0)
+
+    def test_cash_allocation(self):
+        from invest_signal_kit.monte_carlo import (
+            load_monte_carlo_config, run_monte_carlo,
+        )
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        config.num_simulations = 50
+        config.cash_weight = 0.2
+        result = run_monte_carlo(config, series)
+        self.assertAlmostEqual(result.cash_weight, 0.2)
+        # Weights should sum to 0.8 (1.0 - cash)
+        total = sum(result.weights.values())
+        self.assertAlmostEqual(total, 0.8, places=2)
+
+    def test_rebalance_cadences(self):
+        from invest_signal_kit.monte_carlo import (
+            load_monte_carlo_config, run_monte_carlo,
+        )
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        config.num_simulations = 30
+
+        results = {}
+        for cadence in ("daily", "weekly", "monthly", "never"):
+            config.rebalance_cadence = cadence
+            config.seed = 42
+            results[cadence] = run_monte_carlo(config, series)
+            self.assertEqual(results[cadence].rebalance_cadence, cadence)
+
+
+class TestMonteCarloMetrics(unittest.TestCase):
+    """Test Monte Carlo output metrics."""
+
+    def test_result_fields(self):
+        from invest_signal_kit.monte_carlo import (
+            load_monte_carlo_config, run_monte_carlo,
+        )
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        config.num_simulations = 100
+        result = run_monte_carlo(config, series)
+
+        self.assertGreater(result.median_final_equity, 0)
+        self.assertGreater(result.mean_final_equity, 0)
+        self.assertGreater(result.p95_equity, result.p5_equity)
+        self.assertGreaterEqual(result.prob_loss, 0)
+        self.assertLessEqual(result.prob_loss, 100)
+        self.assertGreaterEqual(result.prob_drawdown_breach, 0)
+        self.assertLessEqual(result.prob_drawdown_breach, 100)
+        self.assertGreaterEqual(result.max_drawdown_worst, result.max_drawdown_median)
+        self.assertEqual(len(result.final_equities), 100)
+        self.assertEqual(len(result.max_drawdowns), 100)
+
+    def test_percentile_table(self):
+        from invest_signal_kit.monte_carlo import (
+            load_monte_carlo_config, run_monte_carlo,
+        )
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        config.num_simulations = 100
+        result = run_monte_carlo(config, series)
+
+        self.assertEqual(len(result.percentile_table), 5)
+        # P95 equity should be >= P50 equity
+        p95 = next(r for r in result.percentile_table if r["percentile"] == 95)
+        p50 = next(r for r in result.percentile_table if r["percentile"] == 50)
+        self.assertGreaterEqual(p95["equity"], p50["equity"])
+
+    def test_sample_paths(self):
+        from invest_signal_kit.monte_carlo import (
+            load_monte_carlo_config, run_monte_carlo,
+        )
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        config.num_simulations = 100
+        config.sample_count = 10
+        result = run_monte_carlo(config, series)
+
+        self.assertEqual(len(result.sample_paths), 10)
+        # Each path should have horizon_days + 1 points (initial + daily)
+        for path in result.sample_paths:
+            self.assertEqual(len(path), config.horizon_days + 1)
+
+    def test_stress_overlay_impact(self):
+        from invest_signal_kit.monte_carlo import (
+            load_monte_carlo_config, run_monte_carlo,
+        )
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        config.num_simulations = 100
+
+        # Baseline
+        baseline = run_monte_carlo(config, series)
+
+        # With negative shock
+        config.stress.shock_pct = -0.20
+        config.seed = 42
+        stressed = run_monte_carlo(config, series)
+
+        self.assertLess(stressed.median_final_equity, baseline.median_final_equity)
+
+    def test_expected_shortfall(self):
+        from invest_signal_kit.monte_carlo import (
+            load_monte_carlo_config, run_monte_carlo,
+        )
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        config.num_simulations = 200
+        result = run_monte_carlo(config, series)
+        # CVaR should be a finite number
+        self.assertIsInstance(result.expected_shortfall_pct, float)
+
+
+class TestMonteCarloStress(unittest.TestCase):
+    """Test stress overlay functionality."""
+
+    def test_vol_multiplier(self):
+        from invest_signal_kit.monte_carlo import (
+            load_monte_carlo_config, run_monte_carlo, StressOverlay,
+        )
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        config.num_simulations = 100
+
+        # High vol should widen the distribution
+        config.stress = StressOverlay(vol_multiplier=2.0)
+        config.seed = 42
+        result = run_monte_carlo(config, series)
+        spread = result.p95_equity - result.p5_equity
+
+        config.stress = StressOverlay(vol_multiplier=0.5)
+        config.seed = 42
+        result_low = run_monte_carlo(config, series)
+        spread_low = result_low.p95_equity - result_low.p5_equity
+
+        self.assertGreater(spread, spread_low)
+
+    def test_drift_adjustment(self):
+        from invest_signal_kit.monte_carlo import (
+            load_monte_carlo_config, run_monte_carlo, StressOverlay,
+        )
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        config.num_simulations = 100
+
+        # Negative drift should lower median
+        config.stress = StressOverlay(drift_adjust_pct=-10.0)
+        config.seed = 42
+        neg_result = run_monte_carlo(config, series)
+
+        config.stress = StressOverlay(drift_adjust_pct=10.0)
+        config.seed = 42
+        pos_result = run_monte_carlo(config, series)
+
+        self.assertLess(neg_result.median_final_equity, pos_result.median_final_equity)
+
+
+class TestMonteCarloMarkdown(unittest.TestCase):
+    """Test Monte Carlo markdown rendering."""
+
+    def test_render_contains_sections(self):
+        from invest_signal_kit.monte_carlo import (
+            load_monte_carlo_config, run_monte_carlo, render_monte_carlo_markdown,
+        )
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        config.num_simulations = 50
+        result = run_monte_carlo(config, series)
+        md = render_monte_carlo_markdown(result)
+
+        self.assertIn("Monte Carlo Risk Simulator Report", md)
+        self.assertIn("Configuration", md)
+        self.assertIn("Portfolio Weights", md)
+        self.assertIn("Final Equity Distribution", md)
+        self.assertIn("Return Metrics", md)
+        self.assertIn("Risk Metrics", md)
+        self.assertIn("Worst Path Summary", md)
+        self.assertIn("Percentile Table", md)
+        self.assertIn("Not investment advice", md)
+
+    def test_render_stress_section(self):
+        from invest_signal_kit.monte_carlo import (
+            load_monte_carlo_config, run_monte_carlo, render_monte_carlo_markdown,
+        )
+        data = json.loads((EXAMPLES / "monte_carlo_stress.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        config.num_simulations = 50
+        result = run_monte_carlo(config, series)
+        md = render_monte_carlo_markdown(result)
+
+        self.assertIn("Stress Overlay", md)
+        self.assertIn("One-Time Shock", md)
+        self.assertIn("Volatility Multiplier", md)
+
+
+class TestMonteCarloCLI(unittest.TestCase):
+    """Test Monte Carlo CLI commands."""
+
+    def test_cli_json_output(self):
+        from invest_signal_kit.cli import main
+        ret = main(["monte-carlo", str(EXAMPLES / "monte_carlo_config.json"),
+                     "--simulations", "20"])
+        self.assertEqual(ret, 0)
+
+    def test_cli_markdown_output(self):
+        from invest_signal_kit.cli import main
+        ret = main(["monte-carlo", str(EXAMPLES / "monte_carlo_config.json"),
+                     "--simulations", "20", "--format", "md"])
+        self.assertEqual(ret, 0)
+
+    def test_cli_with_overrides(self):
+        from invest_signal_kit.cli import main
+        ret = main(["monte-carlo", str(EXAMPLES / "monte_carlo_config.json"),
+                     "--simulations", "30", "--seed", "99", "--method", "parametric",
+                     "--horizon", "21", "--rebalance", "daily"])
+        self.assertEqual(ret, 0)
+
+    def test_cli_with_weights(self):
+        from invest_signal_kit.cli import main
+        ret = main(["monte-carlo", str(EXAMPLES / "monte_carlo_config.json"),
+                     "--simulations", "20", "--weights", "AAPL:0.5,MSFT:0.3,TSLA:0.2"])
+        self.assertEqual(ret, 0)
+
+    def test_cli_with_cash(self):
+        from invest_signal_kit.cli import main
+        ret = main(["monte-carlo", str(EXAMPLES / "monte_carlo_config.json"),
+                     "--simulations", "20", "--cash-weight", "0.15"])
+        self.assertEqual(ret, 0)
+
+    def test_cli_stress_overlay(self):
+        from invest_signal_kit.cli import main
+        ret = main(["monte-carlo", str(EXAMPLES / "monte_carlo_stress.json"),
+                     "--simulations", "20"])
+        self.assertEqual(ret, 0)
+
+    def test_cli_output_file(self):
+        from invest_signal_kit.cli import main
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            out_path = f.name
+        try:
+            ret = main(["monte-carlo", str(EXAMPLES / "monte_carlo_config.json"),
+                         "--simulations", "10", "--output", out_path])
+            self.assertEqual(ret, 0)
+            content = Path(out_path).read_text()
+            data = json.loads(content)
+            self.assertIn("median_final_equity", data)
+        finally:
+            os.unlink(out_path)
+
+    def test_cli_missing_file(self):
+        from invest_signal_kit.cli import main
+        ret = main(["monte-carlo", "/nonexistent/file.json"])
+        self.assertEqual(ret, 1)
+
+    def test_cli_bad_json(self):
+        from invest_signal_kit.cli import main
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write("not json")
+            f.flush()
+            ret = main(["monte-carlo", f.name])
+            self.assertEqual(ret, 1)
+
+    def test_cli_empty_price_series(self):
+        from invest_signal_kit.cli import main
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump({"initial_capital": 100000, "price_series": {}}, f)
+            f.flush()
+            ret = main(["monte-carlo", f.name])
+            self.assertEqual(ret, 1)
+
+    def test_cli_drawdown_breach(self):
+        from invest_signal_kit.cli import main
+        ret = main(["monte-carlo", str(EXAMPLES / "monte_carlo_config.json"),
+                     "--simulations", "20", "--drawdown-breach", "5"])
+        self.assertEqual(ret, 0)
+
+
+class TestMonteCarloFromDict(unittest.TestCase):
+    """Test run_monte_carlo_from_dict convenience function."""
+
+    def test_from_dict(self):
+        from invest_signal_kit.monte_carlo import run_monte_carlo_from_dict
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        data["num_simulations"] = 30
+        result = run_monte_carlo_from_dict(data)
+        self.assertIn("median_final_equity", result)
+        self.assertIn("prob_loss", result)
+        self.assertIn("sample_paths", result)
+
+    def test_from_backtest_scenario(self):
+        """Should also work with backtest scenario format (has price_series)."""
+        from invest_signal_kit.monte_carlo import run_monte_carlo_from_dict
+        data = json.loads((EXAMPLES / "backtest_scenario.json").read_text())
+        data["num_simulations"] = 20
+        data["seed"] = 42
+        result = run_monte_carlo_from_dict(data)
+        self.assertIn("median_final_equity", result)
+
+
+class TestMonteCarloExampleFiles(unittest.TestCase):
+    """Test that example files load and run correctly."""
+
+    def test_config_example(self):
+        from invest_signal_kit.monte_carlo import load_monte_carlo_config, run_monte_carlo
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        result = run_monte_carlo(config, series)
+        self.assertEqual(result.num_simulations, 500)
+        self.assertEqual(result.seed, 42)
+        self.assertEqual(len(result.assets), 3)
+
+    def test_stress_example(self):
+        from invest_signal_kit.monte_carlo import load_monte_carlo_config, run_monte_carlo
+        data = json.loads((EXAMPLES / "monte_carlo_stress.json").read_text())
+        config, series = load_monte_carlo_config(data)
+        result = run_monte_carlo(config, series)
+        self.assertEqual(result.method, "parametric")
+        self.assertNotAlmostEqual(result.stress_shock_pct, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

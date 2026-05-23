@@ -1,0 +1,59 @@
+{
+  "initial_capital": 100000,
+  "num_simulations": 500,
+  "horizon_days": 63,
+  "seed": 42,
+  "method": "bootstrap",
+  "price_series": {
+    "AAPL": [
+      {"date": "2026-01-02", "close": 182},
+      {"date": "2026-01-03", "close": 184},
+      {"date": "2026-01-06", "close": 187},
+      {"date": "2026-01-07", "close": 189},
+      {"date": "2026-01-08", "close": 191},
+      {"date": "2026-01-09", "close": 192},
+      {"date": "2026-01-12", "close": 194},
+      {"date": "2026-01-13", "close": 195},
+      {"date": "2026-01-14", "close": 196},
+      {"date": "2026-01-15", "close": 197}
+    ],
+    "MSFT": [
+      {"date": "2026-01-02", "close": 372},
+      {"date": "2026-01-03", "close": 375},
+      {"date": "2026-01-06", "close": 377},
+      {"date": "2026-01-07", "close": 378},
+      {"date": "2026-01-08", "close": 380},
+      {"date": "2026-01-09", "close": 381},
+      {"date": "2026-01-12", "close": 382},
+      {"date": "2026-01-13", "close": 383},
+      {"date": "2026-01-14", "close": 384},
+      {"date": "2026-01-15", "close": 385}
+    ],
+    "TSLA": [
+      {"date": "2026-01-02", "close": 253},
+      {"date": "2026-01-03", "close": 256},
+      {"date": "2026-01-06", "close": 258},
+      {"date": "2026-01-07", "close": 260},
+      {"date": "2026-01-08", "close": 262},
+      {"date": "2026-01-09", "close": 263},
+      {"date": "2026-01-12", "close": 264},
+      {"date": "2026-01-13", "close": 265},
+      {"date": "2026-01-14", "close": 266},
+      {"date": "2026-01-15", "close": 267}
+    ]
+  },
+  "weights": [
+    {"asset": "AAPL", "weight": 0.40},
+    {"asset": "MSFT", "weight": 0.35},
+    {"asset": "TSLA", "weight": 0.25}
+  ],
+  "cash_weight": 0.0,
+  "rebalance_cadence": "monthly",
+  "stress": {
+    "shock_pct": 0,
+    "vol_multiplier": 1.0,
+    "drift_adjust_pct": 0
+  },
+  "drawdown_breach_pct": 15,
+  "confidence_levels": [5, 25, 50, 75, 95]
+}

@@ -4631,11 +4631,23 @@ class TestOptimizerFrontier(unittest.TestCase):
         stats = compute_return_stats(data["price_series"])
         config = OptimizerConfig(seed=42, search_iterations=500, frontier_points=5)
         rng = random.Random(43)
-        frontier = _generate_frontier(stats, config, rng)
-        self.assertGreater(len(frontier), 0)
+        frontier, warnings = _generate_frontier(stats, config, rng)
+        self.assertEqual(len(frontier), 5, f"Expected 5 frontier points, got {len(frontier)}")
+        self.assertEqual(warnings, [])
         # Frontier should be sorted by volatility
         for i in range(1, len(frontier)):
             self.assertGreaterEqual(frontier[i].volatility, frontier[i - 1].volatility)
+
+    def test_frontier_exact_count_8(self):
+        import random
+        from invest_signal_kit.optimizer import compute_return_stats, _generate_frontier, OptimizerConfig
+        data = json.loads((EXAMPLES / "optimizer_config.json").read_text())
+        stats = compute_return_stats(data["price_series"])
+        config = OptimizerConfig(seed=42, search_iterations=500, frontier_points=8)
+        rng = random.Random(43)
+        frontier, warnings = _generate_frontier(stats, config, rng)
+        self.assertEqual(len(frontier), 8, f"Expected 8 frontier points, got {len(frontier)}")
+        self.assertEqual(warnings, [])
 
     def test_frontier_empty_assets(self):
         import random
@@ -4643,8 +4655,9 @@ class TestOptimizerFrontier(unittest.TestCase):
         stats = compute_return_stats({})
         config = OptimizerConfig()
         rng = random.Random(42)
-        frontier = _generate_frontier(stats, config, rng)
+        frontier, warnings = _generate_frontier(stats, config, rng)
         self.assertEqual(frontier, [])
+        self.assertEqual(warnings, [])
 
 
 class TestRunOptimizer(unittest.TestCase):
@@ -4658,7 +4671,7 @@ class TestRunOptimizer(unittest.TestCase):
         self.assertIsNotNone(result.min_variance)
         self.assertIsNotNone(result.max_sharpe)
         self.assertIsNotNone(result.risk_parity)
-        self.assertGreater(len(result.frontier), 0)
+        self.assertEqual(len(result.frontier), 5, f"Expected 5 frontier points, got {len(result.frontier)}")
         self.assertEqual(result.risk_free_rate, 0.04)
 
     def test_target_return_and_vol(self):
@@ -4917,6 +4930,23 @@ class TestOptimizerCLI(unittest.TestCase):
         self.assertEqual(ret, 0)
         data = json.loads(captured.getvalue())
         self.assertIn("min_variance", data)
+
+    def test_frontier_points_cli(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main([
+                "optimize-portfolio", str(EXAMPLES / "optimizer_config.json"),
+                "--format", "json", "--frontier-points", "8",
+            ])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        data = json.loads(captured.getvalue())
+        self.assertEqual(len(data["frontier"]), 8,
+                         f"Expected 8 frontier points via CLI, got {len(data['frontier'])}")
 
 
 class TestOptimizerExampleFile(unittest.TestCase):

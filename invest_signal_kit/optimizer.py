@@ -580,10 +580,16 @@ def _optimize_target_volatility(
 
 def _generate_frontier(
     stats: ReturnStats, config: OptimizerConfig, rng: random.Random
-) -> List[PortfolioPoint]:
-    """Generate efficient frontier via grid search over target returns."""
+) -> Tuple[List[PortfolioPoint], List[str]]:
+    """Generate efficient frontier via grid search over target returns.
+
+    Returns (frontier_points, warnings).  When a target return cannot be
+    met the function retries with progressively relaxed targets before
+    giving up and emitting a warning.
+    """
+    warnings: List[str] = []
     if not stats.mean_returns:
-        return []
+        return [], warnings
 
     # Find return range
     min_ret = min(stats.mean_returns)
@@ -591,7 +597,7 @@ def _generate_frontier(
     if min_ret == max_ret:
         # All assets have same return - just one point
         w = [1.0 / len(stats.assets)] * len(stats.assets)
-        return [_make_portfolio_point(w, stats.assets, stats, config)]
+        return [_make_portfolio_point(w, stats.assets, stats, config)], warnings
 
     # Grid of target returns
     n_points = config.frontier_points
@@ -601,12 +607,28 @@ def _generate_frontier(
     frontier = []
     for target in targets:
         pt = _optimize_target_return(stats, config, rng, target)
+        if pt is None:
+            # Retry with relaxed targets: try 1%, 5%, 10% closer to mean
+            mean_ret = sum(stats.mean_returns) / len(stats.mean_returns)
+            for relaxation in (0.01, 0.05, 0.10):
+                relaxed = target + relaxation * (mean_ret - target)
+                pt = _optimize_target_return(stats, config, rng, relaxed)
+                if pt is not None:
+                    break
         if pt is not None:
             frontier.append(pt)
 
     # Sort by volatility
     frontier.sort(key=lambda p: p.volatility)
-    return frontier
+
+    if len(frontier) < n_points:
+        warnings.append(
+            f"Efficient frontier has {len(frontier)} points instead of the "
+            f"requested {n_points}. Some target returns were infeasible given "
+            f"the asset universe and constraints."
+        )
+
+    return frontier, warnings
 
 
 # ---------------------------------------------------------------------------
@@ -685,7 +707,8 @@ def run_optimizer(
     # Efficient frontier
     # Use a fresh rng for frontier to keep it independent
     frontier_rng = random.Random(config.seed + 1)
-    frontier = _generate_frontier(stats, config, frontier_rng)
+    frontier, frontier_warnings = _generate_frontier(stats, config, frontier_rng)
+    warnings.extend(frontier_warnings)
 
     return OptimizationResult(
         return_stats=stats,

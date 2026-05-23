@@ -93,6 +93,41 @@ def main(argv=None) -> int:
     p_bt.add_argument("--format", choices=["json", "markdown", "md"], default="json",
                       help="Output format (default: json)")
 
+    # --- import ---
+    p_import = sub.add_parser("import", help="Import CSV/JSON data into invest-signal-kit format")
+    p_import.add_argument("kind", choices=["price", "signal", "holdings", "benchmark"],
+                          help="Type of data to import")
+    p_import.add_argument("file", help="Path to CSV or JSON file to import")
+    p_import.add_argument("--output", "-o", help="Output file path (default: stdout)")
+    p_import.add_argument("--format", choices=["json", "markdown", "md"], default="json",
+                          help="Output format (default: json)")
+    p_import.add_argument("--asset-name", default="IMPORTED",
+                          help="Asset name for single-asset price imports (default: IMPORTED)")
+
+    # --- build-scenario ---
+    p_bs = sub.add_parser("build-scenario", help="Build a backtest scenario from imported data files")
+    p_bs.add_argument("--prices", required=True, help="Path to price CSV/JSON file")
+    p_bs.add_argument("--signals", help="Path to signal CSV/JSON file")
+    p_bs.add_argument("--benchmark", help="Path to benchmark CSV/JSON file")
+    p_bs.add_argument("--output", "-o", help="Output file path (default: stdout)")
+    p_bs.add_argument("--format", choices=["json", "markdown", "md"], default="json",
+                      help="Output format (default: json)")
+    p_bs.add_argument("--name", default="", help="Scenario name")
+    p_bs.add_argument("--initial-capital", type=float, default=100000,
+                      help="Initial capital (default: 100000)")
+    p_bs.add_argument("--commission", type=float, default=1.0,
+                      help="Commission per trade (default: 1.0)")
+    p_bs.add_argument("--slippage-bps", type=float, default=5.0,
+                      help="Slippage in basis points (default: 5.0)")
+    p_bs.add_argument("--max-position-pct", type=float, default=25.0,
+                      help="Max position %% (default: 25)")
+    p_bs.add_argument("--max-drawdown-pct", type=float, default=20.0,
+                      help="Max drawdown %% (default: 20)")
+    p_bs.add_argument("--min-confidence", type=float, default=60.0,
+                      help="Min confidence (default: 60)")
+    p_bs.add_argument("--asset-name", default="IMPORTED",
+                      help="Asset name for single-asset price imports (default: IMPORTED)")
+
     # --- serve ---
     p_serve = sub.add_parser("serve", help="Serve the web UI locally")
     p_serve.add_argument("--port", type=int, default=8765, help="Port to listen on (default: 8765)")
@@ -102,6 +137,15 @@ def main(argv=None) -> int:
 
     if args.command == "serve":
         return _cmd_serve(args.port, args.bind)
+
+    if args.command == "import":
+        return _cmd_import(args.kind, args.file, getattr(args, "output", None),
+                           getattr(args, "format", "json"),
+                           getattr(args, "asset_name", "IMPORTED"))
+
+    if args.command == "build-scenario":
+        return _cmd_build_scenario(args, getattr(args, "output", None),
+                                   getattr(args, "format", "json"))
 
     if args.command == "portfolio":
         return _cmd_portfolio(args.file, getattr(args, "output", None),
@@ -668,6 +712,158 @@ def _cmd_backtest(file_path: str, output: str | None, fmt: str) -> int:
         out = render_backtest_markdown(result)
     else:
         out = json.dumps(_result_to_dict(result), indent=2, ensure_ascii=False)
+
+    if output:
+        Path(output).write_text(out, encoding="utf-8")
+        print(f"Written to {output}")
+    else:
+        print(out)
+    return 0
+
+
+def _cmd_import(kind: str, file_path: str, output: str | None, fmt: str,
+                asset_name: str) -> int:
+    """Import CSV/JSON data."""
+    from .importer import (
+        import_price_csv, import_price_json,
+        import_signal_csv, import_signal_json,
+        import_holdings_csv, import_holdings_json,
+        render_import_markdown,
+    )
+
+    try:
+        text = Path(file_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    is_json = file_path.endswith(".json") or text.lstrip().startswith("[")
+
+    if kind == "price":
+        result = import_price_json(text) if is_json else import_price_csv(text)
+        label = "Price Import"
+    elif kind == "signal":
+        result = import_signal_json(text) if is_json else import_signal_csv(text)
+        label = "Signal Import"
+    elif kind == "holdings":
+        result = import_holdings_json(text) if is_json else import_holdings_csv(text)
+        label = "Holdings Import"
+    elif kind == "benchmark":
+        result = import_price_json(text) if is_json else import_price_csv(text)
+        label = "Benchmark Import"
+    else:
+        print(f"Error: unknown import kind '{kind}'", file=sys.stderr)
+        return 1
+
+    if result.errors:
+        if fmt in ("markdown", "md"):
+            out = render_import_markdown(result, label)
+        else:
+            out = json.dumps({
+                "errors": [{"row": e.row, "column": e.column, "message": e.message}
+                           for e in result.errors],
+            }, indent=2, ensure_ascii=False)
+        if output:
+            Path(output).write_text(out, encoding="utf-8")
+            print(f"Written to {output}")
+        else:
+            print(out)
+        return 1
+
+    if fmt in ("markdown", "md"):
+        out = render_import_markdown(result, label)
+    else:
+        out = json.dumps(result.data, indent=2, ensure_ascii=False)
+
+    if output:
+        Path(output).write_text(out, encoding="utf-8")
+        print(f"Written to {output}")
+    else:
+        print(out)
+    return 0
+
+
+def _cmd_build_scenario(args, output: str | None, fmt: str) -> int:
+    """Build a backtest scenario from imported data files."""
+    from .importer import (
+        import_price_csv, import_price_json,
+        import_signal_csv, import_signal_json,
+    )
+    from .scenario_builder import (
+        ScenarioConfig, build_scenario_from_results,
+        render_scenario_markdown,
+    )
+
+    # Read price file
+    try:
+        prices_text = Path(args.prices).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Error reading prices file: {exc}", file=sys.stderr)
+        return 1
+
+    prices_json = args.prices.endswith(".json") or prices_text.lstrip().startswith("[")
+    prices_result = import_price_json(prices_text) if prices_json else import_price_csv(prices_text)
+
+    # Read signal file (optional)
+    signals_result = None
+    if args.signals:
+        try:
+            signals_text = Path(args.signals).read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"Error reading signals file: {exc}", file=sys.stderr)
+            return 1
+        signals_json = args.signals.endswith(".json") or signals_text.lstrip().startswith("[")
+        signals_result = import_signal_json(signals_text) if signals_json else import_signal_csv(signals_text)
+
+    # Read benchmark file (optional)
+    benchmark_result = None
+    if args.benchmark:
+        try:
+            bench_text = Path(args.benchmark).read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"Error reading benchmark file: {exc}", file=sys.stderr)
+            return 1
+        bench_json = args.benchmark.endswith(".json") or bench_text.lstrip().startswith("[")
+        benchmark_result = import_price_json(bench_text) if bench_json else import_price_csv(bench_text)
+
+    # Build config
+    config = ScenarioConfig(
+        name=args.name,
+        initial_capital=args.initial_capital,
+        commission_per_trade=args.commission,
+        slippage_bps=args.slippage_bps,
+        max_position_pct=args.max_position_pct,
+        max_drawdown_pct=args.max_drawdown_pct,
+        min_confidence=args.min_confidence,
+    )
+
+    result = build_scenario_from_results(
+        prices_result=prices_result,
+        signals_result=signals_result,
+        benchmark_result=benchmark_result,
+        config=config,
+        price_asset_name=args.asset_name,
+    )
+
+    if result.errors:
+        if fmt in ("markdown", "md"):
+            out = render_scenario_markdown(result)
+        else:
+            out = json.dumps({
+                "errors": [{"row": e.row, "column": e.column, "message": e.message}
+                           for e in result.errors],
+            }, indent=2, ensure_ascii=False)
+        if output:
+            Path(output).write_text(out, encoding="utf-8")
+            print(f"Written to {output}")
+        else:
+            print(out)
+        return 1
+
+    if fmt in ("markdown", "md"):
+        out = render_scenario_markdown(result)
+    else:
+        out = json.dumps(result.scenario, indent=2, ensure_ascii=False)
 
     if output:
         Path(output).write_text(out, encoding="utf-8")

@@ -1,0 +1,42 @@
+{
+  "initial_capital": 100000,
+  "price_series": {
+    "AAPL": [
+      {"date": "2026-01-02", "open": 180, "high": 183, "low": 179, "close": 182, "volume": 50000000},
+      {"date": "2026-01-03", "open": 182, "high": 185, "low": 181, "close": 184, "volume": 48000000},
+      {"date": "2026-01-06", "open": 184, "high": 188, "low": 183, "close": 187, "volume": 52000000},
+      {"date": "2026-01-07", "open": 187, "high": 190, "low": 186, "close": 189, "volume": 47000000},
+      {"date": "2026-01-08", "open": 189, "high": 192, "low": 188, "close": 191, "volume": 51000000},
+      {"date": "2026-01-09", "open": 191, "high": 193, "low": 190, "close": 192, "volume": 46000000},
+      {"date": "2026-01-12", "open": 192, "high": 195, "low": 191, "close": 194, "volume": 49000000},
+      {"date": "2026-01-13", "open": 194, "high": 196, "low": 193, "close": 195, "volume": 45000000},
+      {"date": "2026-01-14", "open": 195, "high": 197, "low": 194, "close": 196, "volume": 44000000},
+      {"date": "2026-01-15", "open": 196, "high": 198, "low": 195, "close": 197, "volume": 47000000}
+    ]
+  },
+  "signal_events": [
+    {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 100, "reason": "Breakout above resistance with volume confirmation", "confidence": 80, "stop_price": 175, "target_price": 200, "time_stop_days": 15},
+    {"date": "2026-01-09", "asset": "AAPL", "action": "exit", "reason": "Taking profits ahead of macro event"}
+  ],
+  "benchmark": [
+    {"date": "2026-01-02", "open": 5000, "high": 5020, "low": 4980, "close": 5010, "volume": 3000000000},
+    {"date": "2026-01-03", "open": 5010, "high": 5040, "low": 5000, "close": 5030, "volume": 2900000000},
+    {"date": "2026-01-06", "open": 5030, "high": 5060, "low": 5020, "close": 5050, "volume": 3100000000},
+    {"date": "2026-01-07", "open": 5050, "high": 5080, "low": 5040, "close": 5070, "volume": 2800000000},
+    {"date": "2026-01-08", "open": 5070, "high": 5100, "low": 5060, "close": 5090, "volume": 3200000000},
+    {"date": "2026-01-09", "open": 5090, "high": 5110, "low": 5080, "close": 5100, "volume": 2700000000},
+    {"date": "2026-01-12", "open": 5100, "high": 5120, "low": 5090, "close": 5110, "volume": 3000000000},
+    {"date": "2026-01-13", "open": 5110, "high": 5130, "low": 5100, "close": 5120, "volume": 2600000000},
+    {"date": "2026-01-14", "open": 5120, "high": 5140, "low": 5110, "close": 5130, "volume": 2800000000},
+    {"date": "2026-01-15", "open": 5130, "high": 5150, "low": 5120, "close": 5140, "volume": 2900000000}
+  ],
+  "costs": {
+    "commission_per_trade": 1.0,
+    "slippage_bps": 5.0
+  },
+  "risk_rules": {
+    "max_position_pct": 25.0,
+    "max_drawdown_pct": 20.0,
+    "min_confidence": 60.0
+  }
+}

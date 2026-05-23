@@ -120,6 +120,8 @@ invest-signal-kit serve --port 8765
 | `calibrate` | Calibrate decision scores against realized outcomes | `python3 -m invest_signal_kit calibrate examples/decision_journal.json` |
 | `rebalance` | Generate rebalance/trade plan from holdings, targets, and candidates | `python3 -m invest_signal_kit rebalance examples/rebalance_plan.json` |
 | `backtest` | Run backtest / signal replay from a scenario JSON | `python3 -m invest_signal_kit backtest examples/backtest_scenario.json` |
+| `import` | Import CSV/JSON data (price, signal, holdings, benchmark) | `python3 -m invest_signal_kit import price examples/prices.csv` |
+| `build-scenario` | Build a backtest scenario from imported data files | `python3 -m invest_signal_kit build-scenario --prices examples/prices.csv --signals examples/signals.csv` |
 | `serve` | Launch the local browser workstation | `python3 -m invest_signal_kit serve --port 8765` |
 
 ## Practical Workflow
@@ -369,7 +371,81 @@ The backtest engine:
 
 Or use the **Backtest** tab in the web UI to load, edit, and run backtest scenarios interactively.
 
-### 9. Batch Signal Analysis
+### 9. Data Import & Scenario Builder
+
+Import broker/export CSV files and build backtest scenarios without hand-editing JSON.
+
+**Step 1 — Import your data:**
+
+```bash
+# Import price CSV
+python3 -m invest_signal_kit import price examples/prices.csv
+
+# Import signal CSV
+python3 -m invest_signal_kit import signal examples/signals.csv
+
+# Import holdings CSV (for portfolio/rebalance)
+python3 -m invest_signal_kit import holdings examples/holdings.csv
+
+# Import with Markdown report
+python3 -m invest_signal_kit import price examples/prices.csv --format markdown
+```
+
+**Step 2 — Build a scenario:**
+
+```bash
+# Build from CSV files with defaults
+python3 -m invest_signal_kit build-scenario --prices examples/prices.csv --signals examples/signals.csv --benchmark examples/benchmark.csv
+
+# Build with custom config
+python3 -m invest_signal_kit build-scenario \
+  --prices examples/prices.csv \
+  --signals examples/signals.csv \
+  --benchmark examples/benchmark.csv \
+  --name "My Backtest" \
+  --initial-capital 50000 \
+  --commission 2 \
+  --slippage-bps 10 \
+  --asset-name AAPL
+
+# Save to file
+python3 -m invest_signal_kit build-scenario --prices examples/prices.csv --signals examples/signals.csv -o scenario.json
+```
+
+**Step 3 — Run the backtest:**
+
+```bash
+python3 -m invest_signal_kit backtest scenario.json --format markdown
+```
+
+**Full end-to-end workflow:**
+
+```bash
+# 1. Import and build scenario from CSV
+python3 -m invest_signal_kit build-scenario \
+  --prices examples/prices.csv \
+  --signals examples/signals.csv \
+  --benchmark examples/benchmark.csv \
+  --name "AAPL Swing Trade" \
+  -o my_scenario.json
+
+# 2. Run backtest
+python3 -m invest_signal_kit backtest my_scenario.json --format md
+
+# 3. Or use the web UI "Import & Build" tab for interactive CSV import
+python3 -m invest_signal_kit serve --port 8765
+```
+
+**CSV formats:**
+
+- **Price CSV** — Required: `date`, `close`. Optional: `open`, `high`, `low`, `volume`
+- **Signal CSV** — Required: `date`, `asset`, `action`. Optional: `quantity`, `price`, `reason`, `confidence`, `stop_price`, `target_price`, `time_stop_days`
+- **Holdings CSV** — Required: `code`, `shares`, `current_price`. Optional: `name`, `asset_type`, `sector`, `entry_price`, `stop_price`, `direction`
+- **Benchmark CSV** — Same as price CSV
+
+Validation catches: missing columns, bad numbers, duplicate dates, unknown actions, empty files — with row-level error messages.
+
+### 10. Batch Signal Analysis
 
 Analyze multiple signals at once:
 
@@ -561,6 +637,11 @@ All formulas are documented in [docs/framework.md](docs/framework.md). All input
 | `examples/decision_journal.json` | journal | Multi-decision journal with lifecycle, calibration, and attribution |
 | `examples/rebalance_plan.json` | rebalance | Rebalance plan with targets, candidates, constraints, and cost assumptions |
 | `examples/backtest_scenario.json` | backtest | Multi-asset backtest with signals, benchmark, costs, and risk rules |
+| `examples/prices.csv` | CSV | Price data for import (OHLCV format) |
+| `examples/signals.csv` | CSV | Signal events for import |
+| `examples/holdings.csv` | CSV | Portfolio holdings for import |
+| `examples/benchmark.csv` | CSV | Benchmark series for import |
+| `examples/generated_scenario.json` | backtest | Scenario built from CSV imports |
 
 ## Validation Rules
 

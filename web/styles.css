@@ -966,3 +966,67 @@ footer p {
 @media (max-width: 900px) {
   .bt-summary-grid { grid-template-columns: 1fr; }
 }
+
+.import-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 1100px) {
+  .import-grid { grid-template-columns: 1fr; }
+}
+
+.import-grid textarea {
+  min-height: 120px;
+}
+
+.import-status {
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  min-height: 24px;
+}
+
+.import-status.ok {
+  color: var(--green);
+}
+
+.import-status.error {
+  color: var(--red);
+}
+
+.import-status.warning {
+  color: var(--yellow);
+}
+
+.config-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.config-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.config-input {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  width: 140px;
+}
+
+.config-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}

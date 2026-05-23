@@ -1,0 +1,5 @@
+code,name,asset_type,sector,shares,entry_price,current_price,stop_price,direction
+AAPL,Apple Inc.,stock,Technology,100,170,197,175,long
+MSFT,Microsoft Corp.,stock,Technology,75,370,385,360,long
+TSLA,Tesla Inc.,stock,Consumer,50,240,267,230,long
+SPY,SPDR S&P 500 ETF,etf,Index,200,480,502,470,long

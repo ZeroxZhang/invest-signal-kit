@@ -3339,5 +3339,503 @@ class TestBacktestMultiAsset(unittest.TestCase):
         self.assertEqual(result.trades[0].shares, 75)
 
 
+# =========================================================================
+# Import & Scenario Builder Tests
+# =========================================================================
+
+class TestPriceCsvImport(unittest.TestCase):
+    """Test CSV price import."""
+
+    def test_valid_price_csv(self):
+        from invest_signal_kit.importer import import_price_csv
+        text = (EXAMPLES / "prices.csv").read_text()
+        result = import_price_csv(text)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.data), 10)
+        self.assertEqual(result.data[0]["date"], "2026-01-02")
+        self.assertEqual(result.data[0]["close"], 182.0)
+
+    def test_sorted_by_date(self):
+        from invest_signal_kit.importer import import_price_csv
+        text = "date,close\n2026-01-03,100\n2026-01-01,90\n2026-01-02,95\n"
+        result = import_price_csv(text)
+        self.assertEqual(result.errors, [])
+        dates = [d["date"] for d in result.data]
+        self.assertEqual(dates, ["2026-01-01", "2026-01-02", "2026-01-03"])
+
+    def test_missing_required_columns(self):
+        from invest_signal_kit.importer import import_price_csv
+        result = import_price_csv("foo,bar\n1,2\n")
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("Missing required", result.errors[0].message)
+
+    def test_empty_file(self):
+        from invest_signal_kit.importer import import_price_csv
+        result = import_price_csv("")
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("empty", result.errors[0].message.lower())
+
+    def test_no_data_rows(self):
+        from invest_signal_kit.importer import import_price_csv
+        result = import_price_csv("date,close\n")
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("no data rows", result.errors[0].message.lower())
+
+    def test_bad_number(self):
+        from invest_signal_kit.importer import import_price_csv
+        result = import_price_csv("date,close\n2026-01-02,abc\n")
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("Cannot parse", result.errors[0].message)
+
+    def test_duplicate_date(self):
+        from invest_signal_kit.importer import import_price_csv
+        result = import_price_csv("date,close\n2026-01-02,100\n2026-01-02,200\n")
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("Duplicate date", result.errors[0].message)
+
+    def test_optional_columns(self):
+        from invest_signal_kit.importer import import_price_csv
+        result = import_price_csv("date,close\n2026-01-02,100\n")
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.data[0]["close"], 100.0)
+        # Optional columns not in CSV should not appear in output
+        self.assertNotIn("open", result.data[0])
+        self.assertNotIn("high", result.data[0])
+        self.assertNotIn("volume", result.data[0])
+
+    def test_all_ohlcv(self):
+        from invest_signal_kit.importer import import_price_csv
+        result = import_price_csv("date,open,high,low,close,volume\n2026-01-02,100,105,99,103,5000\n")
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.data[0]["open"], 100.0)
+        self.assertEqual(result.data[0]["high"], 105.0)
+        self.assertEqual(result.data[0]["low"], 99.0)
+        self.assertEqual(result.data[0]["volume"], 5000.0)
+
+    def test_missing_date(self):
+        from invest_signal_kit.importer import import_price_csv
+        result = import_price_csv("date,close\n,100\n")
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("Date is empty", result.errors[0].message)
+
+    def test_row_count(self):
+        from invest_signal_kit.importer import import_price_csv
+        result = import_price_csv("date,close\n2026-01-01,10\n2026-01-02,20\n")
+        self.assertEqual(result.row_count, 2)
+
+
+class TestSignalCsvImport(unittest.TestCase):
+    """Test CSV signal import."""
+
+    def test_valid_signal_csv(self):
+        from invest_signal_kit.importer import import_signal_csv
+        text = (EXAMPLES / "signals.csv").read_text()
+        result = import_signal_csv(text)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.data), 5)
+
+    def test_valid_actions(self):
+        from invest_signal_kit.importer import import_signal_csv
+        for action in ["enter", "add", "trim", "exit", "stop", "target", "time_stop", "skip", "blocked"]:
+            result = import_signal_csv(f"date,asset,action\n2026-01-02,AAPL,{action}\n")
+            self.assertEqual(result.errors, [], f"Action '{action}' should be valid")
+
+    def test_unknown_action(self):
+        from invest_signal_kit.importer import import_signal_csv
+        result = import_signal_csv("date,asset,action\n2026-01-02,AAPL,foobar\n")
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("Unknown action", result.errors[0].message)
+
+    def test_missing_asset(self):
+        from invest_signal_kit.importer import import_signal_csv
+        result = import_signal_csv("date,asset,action\n2026-01-02,,enter\n")
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("Asset is empty", result.errors[0].message)
+
+    def test_optional_fields(self):
+        from invest_signal_kit.importer import import_signal_csv
+        result = import_signal_csv("date,asset,action\n2026-01-02,AAPL,enter\n")
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.data[0]["action"], "enter")
+        self.assertNotIn("quantity", result.data[0])
+
+
+class TestHoldingsCsvImport(unittest.TestCase):
+    """Test CSV holdings import."""
+
+    def test_valid_holdings_csv(self):
+        from invest_signal_kit.importer import import_holdings_csv
+        text = (EXAMPLES / "holdings.csv").read_text()
+        result = import_holdings_csv(text)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.data), 4)
+
+    def test_required_columns(self):
+        from invest_signal_kit.importer import import_holdings_csv
+        result = import_holdings_csv("code\nAAPL\n")
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("Missing required", result.errors[0].message)
+
+    def test_bad_direction_warning(self):
+        from invest_signal_kit.importer import import_holdings_csv
+        result = import_holdings_csv("code,shares,current_price,direction\nAAPL,100,150,up\n")
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.warnings), 1)
+        self.assertIn("Unknown direction", result.warnings[0].message)
+
+    def test_defaults(self):
+        from invest_signal_kit.importer import import_holdings_csv
+        result = import_holdings_csv("code,shares,current_price\nAAPL,100,150\n")
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.data[0]["code"], "AAPL")
+
+
+class TestPriceJsonImport(unittest.TestCase):
+    """Test JSON price import."""
+
+    def test_valid_json(self):
+        from invest_signal_kit.importer import import_price_json
+        data = [{"date": "2026-01-02", "close": 100}]
+        result = import_price_json(json.dumps(data))
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.data), 1)
+
+    def test_empty_list(self):
+        from invest_signal_kit.importer import import_price_json
+        result = import_price_json("[]")
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("empty", result.errors[0].message.lower())
+
+    def test_not_a_list(self):
+        from invest_signal_kit.importer import import_price_json
+        result = import_price_json('{"date": "2026-01-02"}')
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("must be a list", result.errors[0].message.lower())
+
+    def test_duplicate_date_json(self):
+        from invest_signal_kit.importer import import_price_json
+        data = [{"date": "2026-01-02", "close": 100}, {"date": "2026-01-02", "close": 200}]
+        result = import_price_json(json.dumps(data))
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("Duplicate date", result.errors[0].message)
+
+
+class TestSignalJsonImport(unittest.TestCase):
+    """Test JSON signal import."""
+
+    def test_valid_json(self):
+        from invest_signal_kit.importer import import_signal_json
+        data = [{"date": "2026-01-02", "asset": "AAPL", "action": "enter"}]
+        result = import_signal_json(json.dumps(data))
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.data), 1)
+
+    def test_unknown_action_json(self):
+        from invest_signal_kit.importer import import_signal_json
+        data = [{"date": "2026-01-02", "asset": "AAPL", "action": "yolo"}]
+        result = import_signal_json(json.dumps(data))
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("Unknown action", result.errors[0].message)
+
+
+class TestHoldingsJsonImport(unittest.TestCase):
+    """Test JSON holdings import."""
+
+    def test_valid_json(self):
+        from invest_signal_kit.importer import import_holdings_json
+        data = [{"code": "AAPL", "shares": 100, "current_price": 150}]
+        result = import_holdings_json(json.dumps(data))
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.data), 1)
+
+    def test_missing_code(self):
+        from invest_signal_kit.importer import import_holdings_json
+        data = [{"shares": 100, "current_price": 150}]
+        result = import_holdings_json(json.dumps(data))
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("code", result.errors[0].message.lower())
+
+
+class TestScenarioBuilder(unittest.TestCase):
+    """Test scenario builder."""
+
+    def test_build_basic_scenario(self):
+        from invest_signal_kit.scenario_builder import build_scenario, ScenarioConfig
+        prices = [{"date": "2026-01-02", "close": 100}, {"date": "2026-01-03", "close": 105}]
+        config = ScenarioConfig(initial_capital=50000)
+        result = build_scenario(prices=prices, config=config)
+        self.assertEqual(result.errors, [])
+        self.assertIsNotNone(result.scenario)
+        self.assertEqual(result.scenario["initial_capital"], 50000)
+        self.assertEqual(result.asset_count, 1)
+        self.assertEqual(result.event_count, 0)
+
+    def test_build_with_signals(self):
+        from invest_signal_kit.scenario_builder import build_scenario
+        prices = [{"date": "2026-01-02", "close": 100}]
+        signals = [{"date": "2026-01-02", "asset": "AAPL", "action": "enter"}]
+        result = build_scenario(prices=prices, signals=signals, price_asset_name="AAPL")
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.event_count, 1)
+
+    def test_build_with_benchmark(self):
+        from invest_signal_kit.scenario_builder import build_scenario
+        prices = [{"date": "2026-01-02", "close": 100}]
+        bench = [{"date": "2026-01-02", "close": 5000}]
+        result = build_scenario(prices=prices, benchmark=bench)
+        self.assertEqual(result.errors, [])
+        self.assertTrue(result.has_benchmark)
+
+    def test_no_prices_error(self):
+        from invest_signal_kit.scenario_builder import build_scenario
+        result = build_scenario(prices=None)
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("No price data", result.errors[0].message)
+
+    def test_signal_asset_warning(self):
+        from invest_signal_kit.scenario_builder import build_scenario
+        prices = [{"date": "2026-01-02", "close": 100}]
+        signals = [{"date": "2026-01-02", "asset": "MSFT", "action": "enter"}]
+        result = build_scenario(prices=prices, signals=signals, price_asset_name="AAPL")
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.warnings), 1)
+        self.assertIn("MSFT", result.warnings[0].message)
+
+    def test_scenario_has_costs_and_risk(self):
+        from invest_signal_kit.scenario_builder import build_scenario, ScenarioConfig
+        prices = [{"date": "2026-01-02", "close": 100}]
+        config = ScenarioConfig(commission_per_trade=2.0, slippage_bps=10, max_position_pct=30)
+        result = build_scenario(prices=prices, config=config)
+        self.assertEqual(result.scenario["costs"]["commission_per_trade"], 2.0)
+        self.assertEqual(result.scenario["costs"]["slippage_bps"], 10.0)
+        self.assertEqual(result.scenario["risk_rules"]["max_position_pct"], 30.0)
+
+    def test_multi_asset_from_column(self):
+        from invest_signal_kit.scenario_builder import build_scenario
+        prices = [
+            {"date": "2026-01-02", "asset": "AAPL", "close": 100},
+            {"date": "2026-01-02", "asset": "MSFT", "close": 200},
+        ]
+        result = build_scenario(prices=prices)
+        self.assertEqual(result.asset_count, 2)
+        self.assertIn("AAPL", result.scenario["price_series"])
+        self.assertIn("MSFT", result.scenario["price_series"])
+
+    def test_build_from_import_results(self):
+        from invest_signal_kit.scenario_builder import build_scenario_from_results, ScenarioConfig
+        from invest_signal_kit.importer import ImportResult
+        prices_result = ImportResult(data=[{"date": "2026-01-02", "close": 100}])
+        result = build_scenario_from_results(prices_result=prices_result)
+        self.assertEqual(result.errors, [])
+        self.assertIsNotNone(result.scenario)
+
+    def test_build_from_import_results_with_errors(self):
+        from invest_signal_kit.scenario_builder import build_scenario_from_results
+        from invest_signal_kit.importer import ImportResult, ImportError
+        prices_result = ImportResult(errors=[ImportError(message="bad data")])
+        result = build_scenario_from_results(prices_result=prices_result)
+        self.assertEqual(len(result.errors), 1)
+
+
+class TestScenarioBuilderFromCsv(unittest.TestCase):
+    """Test end-to-end CSV to scenario pipeline."""
+
+    def test_full_pipeline(self):
+        from invest_signal_kit.importer import import_price_csv, import_signal_csv
+        from invest_signal_kit.scenario_builder import build_scenario, ScenarioConfig
+        from pathlib import Path
+
+        prices = import_price_csv((EXAMPLES / "prices.csv").read_text()).data
+        signals = import_signal_csv((EXAMPLES / "signals.csv").read_text()).data
+        benchmark = import_price_csv((EXAMPLES / "benchmark.csv").read_text()).data
+        config = ScenarioConfig(name="E2E Test", initial_capital=100000)
+        result = build_scenario(prices=prices, signals=signals, benchmark=benchmark, config=config)
+        self.assertEqual(result.errors, [])
+        self.assertIsNotNone(result.scenario)
+        self.assertEqual(result.asset_count, 1)
+        self.assertEqual(result.event_count, 5)
+        self.assertTrue(result.has_benchmark)
+
+    def test_pipeline_to_backtest(self):
+        """Build scenario from CSV then run backtest."""
+        from invest_signal_kit.importer import import_price_csv, import_signal_csv
+        from invest_signal_kit.scenario_builder import build_scenario
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        from pathlib import Path
+
+        prices = import_price_csv((EXAMPLES / "prices.csv").read_text()).data
+        signals = import_signal_csv((EXAMPLES / "signals.csv").read_text()).data
+        result = build_scenario(prices=prices, signals=signals, price_asset_name="AAPL")
+        self.assertEqual(result.errors, [])
+
+        scenario = load_backtest_scenario(result.scenario)
+        bt_result = run_backtest(scenario)
+        self.assertGreater(bt_result.total_trades, 0)
+
+
+class TestImportMarkdownRender(unittest.TestCase):
+    """Test import markdown rendering."""
+
+    def test_render_success(self):
+        from invest_signal_kit.importer import ImportResult, render_import_markdown
+        result = ImportResult(data=[{"date": "2026-01-02", "close": 100}], row_count=1)
+        md = render_import_markdown(result, "Test Import")
+        self.assertIn("Test Import Report", md)
+        self.assertIn("Records imported:** 1", md)
+
+    def test_render_errors(self):
+        from invest_signal_kit.importer import ImportResult, ImportError, render_import_markdown
+        result = ImportResult(errors=[ImportError(row=2, column="close", message="bad number")])
+        md = render_import_markdown(result)
+        self.assertIn("Errors", md)
+        self.assertIn("bad number", md)
+
+
+class TestScenarioMarkdownRender(unittest.TestCase):
+    """Test scenario markdown rendering."""
+
+    def test_render_success(self):
+        from invest_signal_kit.scenario_builder import ScenarioBuildResult, render_scenario_markdown
+        result = ScenarioBuildResult(
+            scenario={"initial_capital": 100000, "price_series": {"AAPL": [{"date": "2026-01-02", "close": 100}]},
+                      "signal_events": [], "costs": {"commission_per_trade": 1, "slippage_bps": 5},
+                      "risk_rules": {"max_position_pct": 25, "max_drawdown_pct": 20, "min_confidence": 60}},
+            asset_count=1, event_count=0,
+        )
+        md = render_scenario_markdown(result)
+        self.assertIn("Scenario Build Report", md)
+        self.assertIn("100,000", md)
+
+    def test_render_with_errors(self):
+        from invest_signal_kit.scenario_builder import ScenarioBuildResult, render_scenario_markdown
+        from invest_signal_kit.importer import ImportError
+        result = ScenarioBuildResult(errors=[ImportError(message="no data")])
+        md = render_scenario_markdown(result)
+        self.assertIn("Errors", md)
+        self.assertIn("no data", md)
+
+
+class TestImportAutoDetect(unittest.TestCase):
+    """Test auto-detect import functions."""
+
+    def test_csv_by_extension(self):
+        from invest_signal_kit.importer import import_prices
+        result = import_prices(str(EXAMPLES / "prices.csv"))
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.data), 10)
+
+    def test_json_by_extension(self):
+        from invest_signal_kit.importer import import_signals
+        result = import_signals(str(EXAMPLES / "signals.csv"))
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.data), 5)
+
+    def test_file_not_found(self):
+        from invest_signal_kit.importer import import_prices
+        result = import_prices("/nonexistent/file.csv")
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("not found", result.errors[0].message.lower())
+
+    def test_is_path_false(self):
+        from invest_signal_kit.importer import import_prices
+        result = import_prices("date,close\n2026-01-02,100\n", is_path=False)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.data), 1)
+
+
+class TestImportCLI(unittest.TestCase):
+    """Test import CLI commands."""
+
+    def test_import_price_json(self):
+        from invest_signal_kit.cli import main
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("date,close\n2026-01-02,100\n2026-01-03,105\n")
+            f.flush()
+            ret = main(["import", "price", f.name])
+            self.assertEqual(ret, 0)
+
+    def test_import_holdings_json(self):
+        from invest_signal_kit.cli import main
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("code,shares,current_price\nAAPL,100,150\n")
+            f.flush()
+            ret = main(["import", "holdings", f.name])
+            self.assertEqual(ret, 0)
+
+    def test_import_bad_file(self):
+        from invest_signal_kit.cli import main
+        ret = main(["import", "price", "/nonexistent/file.csv"])
+        self.assertEqual(ret, 1)
+
+    def test_import_empty_csv(self):
+        from invest_signal_kit.cli import main
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("")
+            f.flush()
+            ret = main(["import", "price", f.name])
+            self.assertEqual(ret, 1)
+
+    def test_import_markdown_format(self):
+        from invest_signal_kit.cli import main
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("date,close\n2026-01-02,100\n")
+            f.flush()
+            ret = main(["import", "price", f.name, "--format", "md"])
+            self.assertEqual(ret, 0)
+
+
+class TestBuildScenarioCLI(unittest.TestCase):
+    """Test build-scenario CLI commands."""
+
+    def test_build_basic(self):
+        from invest_signal_kit.cli import main
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("date,close\n2026-01-02,100\n2026-01-03,105\n")
+            f.flush()
+            ret = main(["build-scenario", "--prices", f.name])
+            self.assertEqual(ret, 0)
+
+    def test_build_with_signals(self):
+        from invest_signal_kit.cli import main
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as fp:
+            fp.write("date,close\n2026-01-02,100\n")
+            fp.flush()
+            p = fp.name
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("date,asset,action\n2026-01-02,AAPL,enter\n")
+            f.flush()
+            ret = main(["build-scenario", "--prices", p, "--signals", f.name, "--asset-name", "AAPL"])
+            self.assertEqual(ret, 0)
+
+    def test_build_markdown(self):
+        from invest_signal_kit.cli import main
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("date,close\n2026-01-02,100\n")
+            f.flush()
+            ret = main(["build-scenario", "--prices", f.name, "--format", "md"])
+            self.assertEqual(ret, 0)
+
+    def test_build_bad_prices(self):
+        from invest_signal_kit.cli import main
+        ret = main(["build-scenario", "--prices", "/nonexistent/file.csv"])
+        self.assertEqual(ret, 1)
+
+    def test_build_with_name_and_capital(self):
+        from invest_signal_kit.cli import main
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("date,close\n2026-01-02,100\n")
+            f.flush()
+            ret = main(["build-scenario", "--prices", f.name, "--name", "My Test", "--initial-capital", "50000"])
+            self.assertEqual(ret, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

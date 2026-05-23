@@ -2985,4 +2985,258 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     populateExamples();
   }
+
+  // =====================================================================
+  // Import & Scenario Builder
+  // =====================================================================
+
+  const IMPORT_PRICES_EXAMPLE = `date,open,high,low,close,volume
+2026-01-02,180,183,179,182,50000000
+2026-01-03,182,185,181,184,48000000
+2026-01-06,184,188,183,187,52000000
+2026-01-07,187,190,186,189,47000000
+2026-01-08,189,192,188,191,51000000
+2026-01-09,191,193,190,192,46000000
+2026-01-12,192,195,191,194,49000000
+2026-01-13,194,196,193,195,45000000
+2026-01-14,195,197,194,196,44000000
+2026-01-15,196,198,195,197,47000000`;
+
+  const IMPORT_SIGNALS_EXAMPLE = `date,asset,action,quantity,reason,confidence,stop_price,target_price,time_stop_days
+2026-01-02,AAPL,enter,100,Breakout above resistance,80,175,200,15
+2026-01-06,MSFT,enter,50,Earnings momentum,75,360,400,20
+2026-01-07,TSLA,enter,,,35,240,280,
+2026-01-08,MSFT,add,25,Adding on breakout,70,,,
+2026-01-09,AAPL,exit,,,0,,,`;
+
+  const IMPORT_BENCH_EXAMPLE = `date,close
+2026-01-02,5010
+2026-01-03,5030
+2026-01-06,5050
+2026-01-07,5070
+2026-01-08,5090
+2026-01-09,5100
+2026-01-12,5110
+2026-01-13,5120
+2026-01-14,5130
+2026-01-15,5140`;
+
+  function parseCsv(text) {
+    const lines = text.trim().split('\n').filter(l => l.trim());
+    if (lines.length < 2) return { headers: [], rows: [], errors: ['CSV is empty or has no data rows.'] };
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+      const vals = lines[i].split(',').map(v => v.trim());
+      const row = {};
+      headers.forEach((h, j) => { row[h] = vals[j] || ''; });
+      rows.push(row);
+    }
+    return { headers, rows, errors: [] };
+  }
+
+  function parseCsvFloat(val) {
+    if (!val || !val.trim()) return 0;
+    const n = Number(val);
+    if (isNaN(n)) return null;
+    return n;
+  }
+
+  function importPricesCsv(text) {
+    const { headers, rows, errors } = parseCsv(text);
+    if (errors.length) return { data: null, errors };
+    if (!headers.includes('date') || !headers.includes('close'))
+      return { data: null, errors: ['Missing required columns: date, close'] };
+    const data = [];
+    const seen = {};
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r.date) { errors.push(`Row ${i+2}: date is empty`); continue; }
+      if (seen[r.date]) { errors.push(`Row ${i+2}: duplicate date '${r.date}'`); continue; }
+      seen[r.date] = i+2;
+      const close = parseCsvFloat(r.close);
+      if (close === null) { errors.push(`Row ${i+2}: cannot parse close '${r.close}'`); continue; }
+      const entry = { date: r.date, close };
+      for (const col of ['open','high','low','volume']) {
+        if (headers.includes(col)) {
+          const v = parseCsvFloat(r[col]);
+          if (v === null) { errors.push(`Row ${i+2}: cannot parse ${col} '${r[col]}'`); continue; }
+          entry[col] = v;
+        }
+      }
+      data.push(entry);
+    }
+    data.sort((a, b) => a.date.localeCompare(b.date));
+    return errors.length ? { data: null, errors } : { data, errors: [] };
+  }
+
+  function importSignalsCsv(text) {
+    const { headers, rows, errors } = parseCsv(text);
+    if (errors.length) return { data: null, errors };
+    const validActions = new Set(['enter','add','trim','exit','stop','target','time_stop','skip','blocked']);
+    if (!headers.includes('date') || !headers.includes('asset') || !headers.includes('action'))
+      return { data: null, errors: ['Missing required columns: date, asset, action'] };
+    const data = [];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r.date) { errors.push(`Row ${i+2}: date is empty`); continue; }
+      if (!r.asset) { errors.push(`Row ${i+2}: asset is empty`); continue; }
+      const action = r.action.toLowerCase();
+      if (!validActions.has(action)) { errors.push(`Row ${i+2}: unknown action '${action}'`); continue; }
+      const entry = { date: r.date, asset: r.asset, action };
+      for (const col of ['quantity','price','confidence','stop_price','target_price']) {
+        if (r[col] && r[col].trim()) {
+          const v = parseCsvFloat(r[col]);
+          if (v === null) { errors.push(`Row ${i+2}: cannot parse ${col} '${r[col]}'`); continue; }
+          entry[col] = v;
+        }
+      }
+      if (r.reason && r.reason.trim()) entry.reason = r.reason.trim();
+      if (r.time_stop_days && r.time_stop_days.trim()) {
+        const v = parseInt(r.time_stop_days);
+        if (!isNaN(v)) entry.time_stop_days = v;
+      }
+      data.push(entry);
+    }
+    return errors.length ? { data: null, errors } : { data, errors: [] };
+  }
+
+  function buildScenario(prices, signals, benchmark, config) {
+    const assetName = config.assetName || 'IMPORTED';
+    const priceSeries = {};
+    if (prices && prices.length) {
+      if (prices[0].asset) {
+        for (const p of prices) {
+          const asset = p.asset;
+          const clean = { ...p }; delete clean.asset;
+          if (!priceSeries[asset]) priceSeries[asset] = [];
+          priceSeries[asset].push(clean);
+        }
+        for (const a of Object.keys(priceSeries)) priceSeries[a].sort((x,y) => x.date.localeCompare(y.date));
+      } else {
+        priceSeries[assetName] = [...prices].sort((a,b) => a.date.localeCompare(b.date));
+      }
+    }
+    const scenario = {
+      initial_capital: config.capital || 100000,
+      price_series: priceSeries,
+      signal_events: signals || [],
+      costs: { commission_per_trade: config.commission || 1, slippage_bps: config.slippage || 5 },
+      risk_rules: { max_position_pct: config.maxPos || 25, max_drawdown_pct: config.maxDd || 20, min_confidence: config.minConf || 60 },
+    };
+    if (benchmark && benchmark.length) {
+      scenario.benchmark = [...benchmark].sort((a,b) => a.date.localeCompare(b.date));
+    }
+    if (config.name) scenario.name = config.name;
+    return scenario;
+  }
+
+  function setStatus(id, msg, cls) {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = msg; el.className = 'import-status ' + (cls || ''); }
+  }
+
+  let lastScenario = null;
+
+  function doBuildScenario() {
+    const pricesText = document.getElementById('import-prices').value;
+    const signalsText = document.getElementById('import-signals').value;
+    const benchText = document.getElementById('import-benchmark').value;
+
+    if (!pricesText.trim()) {
+      setStatus('import-prices-status', 'No price data', 'error');
+      document.getElementById('import-scenario-output').innerHTML = '<p class="placeholder-text" style="color:var(--red)">No price data provided.</p>';
+      return;
+    }
+
+    const prices = importPricesCsv(pricesText);
+    if (prices.errors.length) {
+      setStatus('import-prices-status', prices.errors[0], 'error');
+      document.getElementById('import-scenario-output').innerHTML = '<p class="placeholder-text" style="color:var(--red)">' + prices.errors.join('<br>') + '</p>';
+      return;
+    }
+    setStatus('import-prices-status', prices.data.length + ' price bars imported', 'ok');
+
+    let signals = { data: [], errors: [] };
+    if (signalsText.trim()) {
+      signals = importSignalsCsv(signalsText);
+      if (signals.errors.length) {
+        setStatus('import-signals-status', signals.errors[0], 'error');
+        document.getElementById('import-scenario-output').innerHTML = '<p class="placeholder-text" style="color:var(--red)">' + signals.errors.join('<br>') + '</p>';
+        return;
+      }
+      setStatus('import-signals-status', signals.data.length + ' signal events imported', 'ok');
+    } else {
+      setStatus('import-signals-status', '', '');
+    }
+
+    let benchmark = { data: null, errors: [] };
+    if (benchText.trim()) {
+      benchmark = importPricesCsv(benchText);
+      if (benchmark.errors.length) {
+        setStatus('import-bench-status', benchmark.errors[0], 'error');
+        document.getElementById('import-scenario-output').innerHTML = '<p class="placeholder-text" style="color:var(--red)">' + benchmark.errors.join('<br>') + '</p>';
+        return;
+      }
+      setStatus('import-bench-status', benchmark.data.length + ' benchmark bars imported', 'ok');
+    } else {
+      setStatus('import-bench-status', '', '');
+    }
+
+    const config = {
+      name: document.getElementById('import-scenario-name').value,
+      capital: Number(document.getElementById('import-capital').value) || 100000,
+      commission: Number(document.getElementById('import-commission').value) || 1,
+      slippage: Number(document.getElementById('import-slippage').value) || 5,
+      maxPos: Number(document.getElementById('import-max-pos').value) || 25,
+      maxDd: Number(document.getElementById('import-max-dd').value) || 20,
+      minConf: Number(document.getElementById('import-min-conf').value) || 60,
+      assetName: document.getElementById('import-asset-name').value || 'IMPORTED',
+    };
+
+    lastScenario = buildScenario(prices.data, signals.data, benchmark.data, config);
+    const output = document.getElementById('import-scenario-output');
+    const assetCount = Object.keys(lastScenario.price_series).length;
+    const eventCount = lastScenario.signal_events.length;
+    const hasBench = lastScenario.benchmark && lastScenario.benchmark.length > 0;
+
+    let html = '<div style="margin-bottom:8px">';
+    html += '<span style="color:var(--green)">Scenario built successfully</span>';
+    html += ' — <strong>' + assetCount + '</strong> asset(s), ';
+    html += '<strong>' + eventCount + '</strong> signal(s), ';
+    html += 'benchmark: ' + (hasBench ? '<span style="color:var(--green)">yes</span>' : '<span style="color:var(--text-muted)">no</span>');
+    html += '</div>';
+    html += '<pre style="font-size:11px;max-height:400px;overflow:auto">' + escapeHtml(JSON.stringify(lastScenario, null, 2)) + '</pre>';
+    output.innerHTML = html;
+  }
+
+  const btnPricesExample = document.getElementById('btn-import-prices-example');
+  const btnSignalsExample = document.getElementById('btn-import-signals-example');
+  const btnBenchExample = document.getElementById('btn-import-bench-example');
+  const btnBuildScenario = document.getElementById('btn-build-scenario');
+  const btnSendToBacktest = document.getElementById('btn-send-to-backtest');
+  const btnCopyScenario = document.getElementById('btn-copy-scenario');
+
+  if (btnPricesExample) btnPricesExample.addEventListener('click', () => {
+    document.getElementById('import-prices').value = IMPORT_PRICES_EXAMPLE;
+    setStatus('import-prices-status', '', '');
+  });
+  if (btnSignalsExample) btnSignalsExample.addEventListener('click', () => {
+    document.getElementById('import-signals').value = IMPORT_SIGNALS_EXAMPLE;
+    setStatus('import-signals-status', '', '');
+  });
+  if (btnBenchExample) btnBenchExample.addEventListener('click', () => {
+    document.getElementById('import-benchmark').value = IMPORT_BENCH_EXAMPLE;
+    setStatus('import-bench-status', '', '');
+  });
+  if (btnBuildScenario) btnBuildScenario.addEventListener('click', doBuildScenario);
+  if (btnSendToBacktest) btnSendToBacktest.addEventListener('click', () => {
+    if (!lastScenario) { alert('Build a scenario first.'); return; }
+    document.getElementById('bt-editor').value = JSON.stringify(lastScenario, null, 2);
+    document.querySelector('[data-tab="backtest"]').click();
+  });
+  if (btnCopyScenario) btnCopyScenario.addEventListener('click', () => {
+    if (!lastScenario) return;
+    navigator.clipboard.writeText(JSON.stringify(lastScenario, null, 2)).catch(() => {});
+  });
 });

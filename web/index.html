@@ -10,7 +10,7 @@
   <header>
     <div class="header-left">
       <h1>invest-signal-kit</h1>
-      <span class="version">v0.5.0</span>
+      <span class="version">v0.7.0</span>
     </div>
     <nav id="main-nav">
       <button class="nav-btn active" data-tab="signal-lab">Signal Lab</button>
@@ -19,6 +19,7 @@
       <button class="nav-btn" data-tab="portfolio">Portfolio</button>
       <button class="nav-btn" data-tab="rebalance">Rebalance</button>
       <button class="nav-btn" data-tab="backtest">Backtest</button>
+      <button class="nav-btn" data-tab="importer">Import &amp; Build</button>
       <button class="nav-btn" data-tab="journal">Journal</button>
       <button class="nav-btn" data-tab="decision-memo">Decision Memo</button>
       <button class="nav-btn" data-tab="examples">Examples</button>
@@ -695,6 +696,86 @@
       <div class="panel" id="bt-blocked-panel">
         <h2>Blocked / Skipped Events</h2>
         <div id="bt-blocked-list" class="blockers-list"></div>
+      </div>
+    </section>
+
+    <!-- ===== Import & Build Scenario ===== -->
+    <section id="importer" class="tab-panel">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Data Import &amp; Scenario Builder</h2>
+          <p class="section-desc">Paste CSV data for prices, signals, and benchmark. Build a backtest scenario client-side.</p>
+        </div>
+      </div>
+
+      <div class="import-grid">
+        <!-- Prices -->
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Prices (CSV)</h2>
+            <div class="btn-group">
+              <button id="btn-import-prices-example" class="btn btn-sm">Load Example</button>
+            </div>
+          </div>
+          <textarea id="import-prices" spellcheck="false" placeholder="date,open,high,low,close,volume&#10;2026-01-02,180,183,179,182,50000000&#10;2026-01-03,182,185,181,184,48000000"></textarea>
+          <div id="import-prices-status" class="import-status"></div>
+        </div>
+
+        <!-- Signals -->
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Signals (CSV)</h2>
+            <div class="btn-group">
+              <button id="btn-import-signals-example" class="btn btn-sm">Load Example</button>
+            </div>
+          </div>
+          <textarea id="import-signals" spellcheck="false" placeholder="date,asset,action,quantity,reason,confidence,stop_price,target_price&#10;2026-01-02,AAPL,enter,100,Breakout,80,175,200"></textarea>
+          <div id="import-signals-status" class="import-status"></div>
+        </div>
+
+        <!-- Benchmark -->
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Benchmark (CSV, optional)</h2>
+            <div class="btn-group">
+              <button id="btn-import-bench-example" class="btn btn-sm">Load Example</button>
+            </div>
+          </div>
+          <textarea id="import-benchmark" spellcheck="false" placeholder="date,close&#10;2026-01-02,5010&#10;2026-01-03,5030"></textarea>
+          <div id="import-bench-status" class="import-status"></div>
+        </div>
+      </div>
+
+      <!-- Config -->
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Scenario Config</h2>
+          <div class="btn-group">
+            <button id="btn-build-scenario" class="btn btn-sm btn-primary">Build Scenario</button>
+            <button id="btn-send-to-backtest" class="btn btn-sm">Send to Backtest</button>
+            <button id="btn-copy-scenario" class="btn btn-sm">Copy JSON</button>
+          </div>
+        </div>
+        <div class="config-row">
+          <label>Name <input id="import-scenario-name" type="text" value="Imported Scenario" class="config-input"></label>
+          <label>Capital <input id="import-capital" type="number" value="100000" class="config-input"></label>
+          <label>Commission <input id="import-commission" type="number" value="1" step="0.1" class="config-input"></label>
+          <label>Slippage (bps) <input id="import-slippage" type="number" value="5" step="0.5" class="config-input"></label>
+          <label>Max Position % <input id="import-max-pos" type="number" value="25" class="config-input"></label>
+          <label>Max Drawdown % <input id="import-max-dd" type="number" value="20" class="config-input"></label>
+          <label>Min Confidence <input id="import-min-conf" type="number" value="60" class="config-input"></label>
+          <label>Asset Name <input id="import-asset-name" type="text" value="IMPORTED" class="config-input"></label>
+        </div>
+      </div>
+
+      <!-- Output -->
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Scenario Output</h2>
+        </div>
+        <div id="import-scenario-output" class="output-area">
+          <p class="placeholder-text">Paste CSV data above and click "Build Scenario" to generate a backtest-ready JSON.</p>
+        </div>
       </div>
     </section>
 

@@ -1,0 +1,6 @@
+date,asset,action,quantity,price,reason,confidence,stop_price,target_price,time_stop_days
+2026-01-02,AAPL,enter,100,,Breakout above resistance with volume confirmation,80,175,200,15
+2026-01-06,MSFT,enter,50,,Earnings momentum play with sector tailwind,75,360,400,20
+2026-01-07,TSLA,enter,,,Low confidence speculative entry,35,240,280,
+2026-01-08,MSFT,add,25,,Adding on confirmed breakout,70,,,
+2026-01-09,AAPL,exit,,,Taking profits ahead of macro event,0,,,

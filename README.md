@@ -45,7 +45,7 @@ Render a Markdown report:
 python3 -m invest_signal_kit render examples/etf_signal.json --output out.md
 ```
 
-After editable install, the console script is also available:
+After installation, the console script is also available:
 
 ```bash
 invest-signal-kit validate examples/etf_signal.json

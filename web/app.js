@@ -3,6 +3,26 @@
 
 'use strict';
 
+// i18n shortcut
+var _t = function(key, fallback) {
+  if (typeof I18n !== 'undefined' && I18n.t) return I18n.tPlain(key, fallback);
+  return fallback || key;
+};
+
+// Re-run dynamic translations when locale changes
+function onLocaleChanged(locale) {
+  // Re-render example gallery with translated names/descriptions
+  populateExamples();
+  // Refresh scorecard labels (factor names already in HTML data-i18n)
+  // Refresh dynamically-rendered content
+  if (window._lastPortfolioResult) renderPortfolioUI(window._lastPortfolioResult);
+  if (window._lastRebalResult) renderRebalanceUI(window._lastRebalResult);
+  if (window._lastBtResult) renderBacktestUI(window._lastBtResult);
+  if (window._lastMcResult) renderMcUI(window._lastMcResult);
+  if (window._lastOptResult) renderOptUI(window._lastOptResult);
+  if (window._lastJournalResult) renderJournalUI(window._lastJournalResult);
+}
+
 // ---------------------------------------------------------------------------
 // Framework Logic (mirrors invest_signal_kit/framework.py)
 // ---------------------------------------------------------------------------
@@ -233,7 +253,7 @@ function assessDecisionReadiness(inp) {
 function round1(v) { return Math.round(v * 10) / 10; }
 function round2(v) { return Math.round(v * 100) / 100; }
 function round3(v) { return Math.round(v * 1000) / 1000; }
-function formatNum(n) { return n.toLocaleString('en-US'); }
+function formatNum(n) { return n.toLocaleString(undefined); }
 function formatPct(n) { return (n >= 0 ? '+' : '') + n.toFixed(2) + '%'; }
 
 // ---------------------------------------------------------------------------
@@ -242,9 +262,9 @@ function formatPct(n) { return (n >= 0 ? '+' : '') + n.toFixed(2) + '%'; }
 
 const EXAMPLES = {
   etf_signal: {
-    name: 'ETF Candidate Signal',
+    get name() { return _t('ex_etf_name', 'ETF Candidate Signal'); },
     type: 'signal',
-    description: 'Semiconductor ETF breakout candidate with A/B evidence, trigger/invalidation, and risk controls.',
+    get description() { return _t('ex_etf_desc', 'Semiconductor ETF breakout candidate with A/B evidence, trigger/invalidation, and risk controls.'); },
     data: {
       signal: {
         id: '2026-05-20-semiconductor-etf-001',
@@ -272,9 +292,9 @@ const EXAMPLES = {
     },
   },
   stock_shift: {
-    name: 'Stock Shift / Watch Signal',
+    get name() { return _t('ex_stock_name', 'Stock Shift / Watch Signal'); },
     type: 'signal',
-    description: 'Event-driven stock signal at INFORMATION/WATCH level with mixed evidence.',
+    get description() { return _t('ex_stock_desc', 'Event-driven stock signal at INFORMATION/WATCH level with mixed evidence.'); },
     data: {
       signal: {
         id: '2026-05-19-ev-maker-002',
@@ -300,9 +320,9 @@ const EXAMPLES = {
     },
   },
   professional: {
-    name: 'Professional Full Analysis',
+    get name() { return _t('ex_professional_name', 'Professional Full Analysis'); },
     type: 'signal + framework',
-    description: 'Complete signal with framework scorecard inputs, scenario model, and position sizing.',
+    get description() { return _t('ex_professional_desc', 'Complete signal with framework scorecard inputs, scenario model, and position sizing.'); },
     data: {
       signal: {
         id: '2026-05-20-semiconductor-etf-001',
@@ -337,9 +357,9 @@ const EXAMPLES = {
     },
   },
   macro_context: {
-    name: 'Macro Context',
+    get name() { return _t('ex_macro_name', 'Macro Context'); },
     type: 'macro',
-    description: 'Macro environment context (no trade action fields). Demonstrates macro validation.',
+    get description() { return _t('ex_macro_desc', 'Macro environment context (no trade action fields). Demonstrates macro validation.'); },
     data: {
       macro_context: {
         date: '2026-05-20',
@@ -358,9 +378,9 @@ const EXAMPLES = {
     },
   },
   invalid_action: {
-    name: 'Invalid Action Signal',
+    get name() { return _t('ex_invalid_name', 'Invalid Action Signal'); },
     type: 'signal (invalid)',
-    description: 'Intentionally invalid action-level signal: D-only evidence, low confidence, missing risk fields.',
+    get description() { return _t('ex_invalid_desc', 'Intentionally invalid action-level signal: D-only evidence, low confidence, missing risk fields.'); },
     data: {
       signal: {
         id: '2026-05-18-bad-signal-001',
@@ -544,17 +564,17 @@ function generateMemo(sigData, tq, mc, re, ev, ps, targetRet) {
   const lines = [];
   const sig = sigData.signal || sigData;
 
-  lines.push(`# Decision Memo: ${sig.title || '(untitled)'}`);
+  lines.push(`# ${_t('memo_header_title', 'Decision Memo')}: ${sig.title || '(untitled)'}`);
   lines.push('');
-  if (sig.instrument) lines.push(`**Instrument:** ${sig.instrument.code} — ${sig.instrument.name}`);
-  if (sig.direction) lines.push(`**Direction:** ${sig.direction}`);
-  if (sig.impact_horizon) lines.push(`**Horizon:** ${sig.impact_horizon}`);
+  if (sig.instrument) lines.push(`**${_t('memo_header_instrument', 'Instrument')}:** ${sig.instrument.code} — ${sig.instrument.name}`);
+  if (sig.direction) lines.push(`**${_t('memo_header_direction', 'Direction')}:** ${sig.direction}`);
+  if (sig.impact_horizon) lines.push(`**${_t('memo_header_horizon', 'Horizon')}:** ${sig.impact_horizon}`);
   lines.push('');
 
-  if (sig.summary) { lines.push('## Thesis Summary'); lines.push(sig.summary); lines.push(''); }
+  if (sig.summary) { lines.push('## ' + _t('memo_header_thesis_summary', 'Thesis Summary')); lines.push(sig.summary); lines.push(''); }
 
   // Thesis Quality
-  lines.push('## Thesis Quality');
+  lines.push('## ' + _t('memo_header_thesis_quality', 'Thesis Quality'));
   lines.push(`**Score: ${tq.total}/100 (${tq.grade})**`);
   lines.push('');
   lines.push('| Factor | Score | Weight |');
@@ -567,7 +587,7 @@ function generateMemo(sigData, tq, mc, re, ev, ps, targetRet) {
   lines.push('');
 
   // Market Confirmation
-  lines.push('## Market / Price Confirmation');
+  lines.push('## ' + _t('memo_header_market', 'Market / Price Confirmation'));
   lines.push(`**Score: ${mc.total}/100 (${mc.grade})**`);
   lines.push('');
   lines.push('| Factor | Score | Weight |');
@@ -580,7 +600,7 @@ function generateMemo(sigData, tq, mc, re, ev, ps, targetRet) {
   lines.push('');
 
   // Risk / Execution
-  lines.push('## Risk & Execution Discipline');
+  lines.push('## ' + _t('memo_header_risk', 'Risk & Execution Discipline'));
   lines.push(`**Score: ${re.total}/100 (${re.grade})**`);
   lines.push('');
   lines.push('| Factor | Score | Weight |');
@@ -593,10 +613,10 @@ function generateMemo(sigData, tq, mc, re, ev, ps, targetRet) {
   lines.push('');
 
   // Expected Value
-  lines.push('## Expected Value / Scenario Analysis');
-  lines.push(`**Expected Return: ${formatPct(ev.expected_return_pct)}** (${ev.quality.replace(/_/g, ' ')})`);
-  lines.push(`**Max Drawdown: ${ev.max_drawdown_pct.toFixed(2)}%**`);
-  lines.push(`**Payoff Asymmetry: ${ev.payoff_asymmetry.toFixed(2)}x**`);
+  lines.push('## ' + _t('memo_header_ev', 'Expected Value / Scenario Analysis'));
+  lines.push(`**${_t('ev_expected', 'Expected Return')}:** ${formatPct(ev.expected_return_pct)}** (${ev.quality.replace(/_/g, ' ')})`);
+  lines.push(`**${_t('ev_drawdown', 'Max Drawdown')}:** ${ev.max_drawdown_pct.toFixed(2)}%`);
+  lines.push(`**${_t('ev_asymmetry', 'Payoff Asymmetry')}:** ${ev.payoff_asymmetry.toFixed(2)}x`);
   lines.push('');
   lines.push('| Scenario | Probability | Return |');
   lines.push('|----------|-------------|--------|');
@@ -606,7 +626,7 @@ function generateMemo(sigData, tq, mc, re, ev, ps, targetRet) {
   lines.push('');
 
   // Position Sizing
-  lines.push('## Position Sizing');
+  lines.push('## ' + _t('memo_header_sizing', 'Position Sizing'));
   lines.push(`- **Risk Budget:** ${formatNum(ps.risk_amount)}`);
   lines.push(`- **Raw Shares:** ${formatNum(ps.raw_position_size)}`);
   lines.push(`- **Adjusted Shares:** ${formatNum(ps.adjusted_position_size)} (confidence factor: ${ps.confidence_factor.toFixed(2)})`);
@@ -634,23 +654,23 @@ function generateMemo(sigData, tq, mc, re, ev, ps, targetRet) {
     scorecard_blockers: allBlockers,
   });
 
-  lines.push('## Decision Readiness');
+  lines.push('## ' + _t('memo_header_readiness', 'Decision Readiness'));
   lines.push(`**Recommended Level: ${dr.recommended_level.toUpperCase()}**`);
-  if (dr.can_promote) lines.push('**Status: All gates passed — ready for action**');
-  else lines.push(`**Status: ${dr.blockers.length} blocker(s) remaining**`);
+  if (dr.can_promote) lines.push('**' + _t('memo_header_action_ready', 'Status: All gates passed — ready for action') + '**');
+  else lines.push('**' + _t('memo_header_blockers_remaining', 'Status: {count} blocker(s) remaining').replace('{count}', dr.blockers.length) + '**');
   lines.push('');
-  lines.push('### Checklist');
+  lines.push('### ' + _t('memo_header_checklist', 'Checklist'));
   for (const [k, v] of Object.entries(dr.checklist)) {
     lines.push(`- [${v ? 'x' : ' '}] ${k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}`);
   }
   if (dr.blockers.length) {
     lines.push('');
-    lines.push('### Blockers');
+    lines.push('### ' + _t('memo_header_blockers', 'Blockers'));
     dr.blockers.forEach(b => lines.push(`- ${b}`));
   }
   lines.push('');
   lines.push('---');
-  lines.push('*Generated by invest-signal-kit framework. Not investment advice.*');
+  lines.push('*' + _t('memo_footer', 'Generated by invest-signal-kit framework. Not investment advice.') + '*');
   return lines.join('\n');
 }
 
@@ -1825,7 +1845,7 @@ function updateScenarioSizing() {
   document.getElementById('ev-drawdown').textContent = ev.max_drawdown_pct.toFixed(2) + '%';
   document.getElementById('ev-drawdown').className = 'metric-value negative';
   document.getElementById('ev-asymmetry').textContent = ev.payoff_asymmetry.toFixed(2) + 'x';
-  const qualityMap = { positive_ev: 'Positive EV', marginal: 'Marginal', negative_ev: 'Negative EV' };
+  const qualityMap = { positive_ev: _t('quality_positive_ev', 'Positive EV'), marginal: _t('quality_marginal', 'Marginal'), negative_ev: _t('quality_negative_ev', 'Negative EV') };
   const qualityEl = document.getElementById('ev-quality');
   qualityEl.textContent = qualityMap[ev.quality] || ev.quality;
   qualityEl.className = 'metric-value ' + (ev.quality === 'positive_ev' ? 'positive' : ev.quality === 'marginal' ? 'marginal' : 'negative');
@@ -1870,16 +1890,16 @@ function runSignalAction(action) {
     case 'validate': {
       const issues = isMacro ? validateMacro(data.macro_context || data) : validateSignal(sigData);
       if (issues.length === 0) {
-        output.innerHTML = `<span class="output-valid">VALID — ${isMacro ? 'macro' : 'signal'} passed all validation rules.</span>`;
+        output.innerHTML = '<span class="output-valid">' + (isMacro ? _t('validation_valid_macro', 'VALID — macro passed all validation rules.') : _t('validation_valid_signal', 'VALID — signal passed all validation rules.')) + '</span>';
       } else {
-        output.innerHTML = `<span class="output-invalid">INVALID — ${issues.length} issue(s) found:</span>\n\n` +
+        output.innerHTML = '<span class="output-invalid">' + _t('validation_invalid', 'INVALID — {count} issue(s) found:').replace('{count}', issues.length) + '</span>\n\n' +
           issues.map(i => `  [${i.severity}] ${i.rule}: ${i.message}`).join('\n');
       }
       break;
     }
     case 'score': {
       if (isMacro) {
-        output.innerHTML = '<span class="output-invalid">Error: scoring only supports signals, not macro context.</span>';
+        output.innerHTML = '<span class="output-invalid">' + _t('validation_macro_error', 'Error: scoring only supports signals, not macro context.') + '</span>';
         return;
       }
       const result = scoreSignal(sigData);
@@ -1893,7 +1913,7 @@ function runSignalAction(action) {
     }
     case 'framework': {
       if (isMacro) {
-        output.innerHTML = '<span class="output-invalid">Error: framework analysis only supports signals.</span>';
+        output.innerHTML = '<span class="output-invalid">' + _t('validation_framework_error', 'Error: framework analysis only supports signals.') + '</span>';
         return;
       }
       const fw = data.framework || {};
@@ -2136,7 +2156,7 @@ function copyOutput() {
 
 function clearOutput() {
   const output = document.getElementById('signal-output');
-  output.innerHTML = '<p class="placeholder-text">Load an example or paste JSON, then click an action button.</p>';
+  output.innerHTML = '<p class="placeholder-text">' + _t('output_placeholder', 'Load an example or paste JSON, then click an action button.') + '</p>';
 }
 
 function copyMemo() {

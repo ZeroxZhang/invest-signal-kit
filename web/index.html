@@ -5,55 +5,77 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Invest Signal Kit — Workstation</title>
   <link rel="stylesheet" href="styles.css">
+  <!-- i18n -->
+  <script src="i18n/en.js"></script>
+  <script src="i18n/zh.js"></script>
+  <script src="i18n/i18n.js"></script>
 </head>
 <body>
   <header>
     <div class="header-left">
-      <h1>invest-signal-kit</h1>
-      <span class="version">v0.8.0</span>
+      <h1 data-i18n="app_title">invest-signal-kit</h1>
+      <span class="version" data-i18n="version">v0.8.0</span>
     </div>
-    <nav id="main-nav">
-      <button class="nav-btn active" data-tab="signal-lab">Signal Lab</button>
-      <button class="nav-btn" data-tab="scorecards">Scorecards</button>
-      <button class="nav-btn" data-tab="scenario-sizing">Scenario &amp; Sizing</button>
-      <button class="nav-btn" data-tab="portfolio">Portfolio</button>
-      <button class="nav-btn" data-tab="rebalance">Rebalance</button>
-      <button class="nav-btn" data-tab="backtest">Backtest</button>
-      <button class="nav-btn" data-tab="monte-carlo">Monte Carlo</button>
-      <button class="nav-btn" data-tab="optimizer">Optimizer</button>
-      <button class="nav-btn" data-tab="importer">Import &amp; Build</button>
-      <button class="nav-btn" data-tab="journal">Journal</button>
-      <button class="nav-btn" data-tab="decision-memo">Decision Memo</button>
-      <button class="nav-btn" data-tab="examples">Examples</button>
-    </nav>
+    <div class="header-right">
+      <nav id="main-nav">
+        <span class="nav-group-label" data-i18n="nav_group_analysis">Signal Analysis</span>
+        <button class="nav-btn active" data-tab="signal-lab" data-i18n="nav_signal_lab">Signal Lab</button>
+        <button class="nav-btn" data-tab="scorecards" data-i18n="nav_scorecards">Scorecards</button>
+        <button class="nav-btn" data-tab="scenario-sizing" data-i18n="nav_scenario_sizing">Scenario &amp; Sizing</button>
+        <button class="nav-btn" data-tab="decision-memo" data-i18n="nav_decision_memo">Decision Memo</button>
+        <span class="nav-group-sep"></span>
+        <span class="nav-group-label" data-i18n="nav_group_tools">Portfolio Tools</span>
+        <button class="nav-btn" data-tab="portfolio" data-i18n="nav_portfolio">Portfolio</button>
+        <button class="nav-btn" data-tab="rebalance" data-i18n="nav_rebalance">Rebalance</button>
+        <button class="nav-btn" data-tab="backtest" data-i18n="nav_backtest">Backtest</button>
+        <button class="nav-btn" data-tab="monte-carlo" data-i18n="nav_monte_carlo">Monte Carlo</button>
+        <button class="nav-btn" data-tab="optimizer" data-i18n="nav_optimizer">Optimizer</button>
+        <button class="nav-btn" data-tab="importer" data-i18n="nav_importer">Import &amp; Build</button>
+        <button class="nav-btn" data-tab="journal" data-i18n="nav_journal">Journal</button>
+        <span class="nav-group-sep"></span>
+        <button class="nav-btn nav-btn-examples" data-tab="examples" data-i18n="nav_examples">Examples</button>
+      </nav>
+      <div class="lang-switcher">
+        <select id="lang-select" aria-label="Language" onchange="I18n.setLocale(this.value)">
+          <option value="en">English</option>
+          <option value="zh">中文</option>
+          <option value="bilingual">双语</option>
+        </select>
+      </div>
+    </div>
   </header>
 
   <main>
     <!-- ===== Signal Lab ===== -->
     <section id="signal-lab" class="tab-panel active">
+      <div class="quickstart-banner" data-tab="signal-lab">
+        <span class="quickstart-icon">i</span>
+        <span class="quickstart-text" data-i18n="quickstart_signal_lab">Paste your signal JSON in the left panel, then use Validate → Score → Full Analysis to check quality and readiness.</span>
+        <button class="quickstart-dismiss" onclick="this.parentElement.remove()" title="Dismiss">&times;</button>
+      </div>
       <div class="panel-grid">
         <div class="panel">
           <div class="panel-header">
-            <h2>Signal Input</h2>
+            <h2 data-i18n="signal_input">Signal Input</h2>
             <div class="btn-group">
-              <button id="btn-validate" class="btn btn-sm">Validate</button>
-              <button id="btn-score" class="btn btn-sm">Score</button>
-              <button id="btn-render" class="btn btn-sm">Render MD</button>
-              <button id="btn-framework" class="btn btn-sm btn-primary">Full Analysis</button>
+              <button id="btn-validate" class="btn btn-sm" data-i18n-title="tip_validate" data-i18n="btn_validate">Validate</button>
+              <button id="btn-score" class="btn btn-sm" data-i18n-title="tip_score" data-i18n="btn_score">Score</button>
+              <button id="btn-render" class="btn btn-sm" data-i18n-title="tip_render_md" data-i18n="btn_render_md">Render MD</button>
+              <button id="btn-framework" class="btn btn-sm btn-primary" data-i18n-title="tip_full_analysis" data-i18n="btn_full_analysis">Full Analysis</button>
             </div>
           </div>
-          <textarea id="signal-editor" spellcheck="false" placeholder="Paste or edit signal JSON here..."></textarea>
+          <textarea id="signal-editor" spellcheck="false" data-i18n-placeholder="signal_placeholder" placeholder="Paste or edit signal JSON here..."></textarea>
         </div>
         <div class="panel">
           <div class="panel-header">
-            <h2>Output</h2>
+            <h2 data-i18n="signal_output">Output</h2>
             <div class="btn-group">
-              <button id="btn-copy-output" class="btn btn-sm">Copy</button>
-              <button id="btn-clear-output" class="btn btn-sm">Clear</button>
+              <button id="btn-copy-output" class="btn btn-sm" data-i18n="btn_copy">Copy</button>
+              <button id="btn-clear-output" class="btn btn-sm" data-i18n="btn_clear">Clear</button>
             </div>
           </div>
           <div id="signal-output" class="output-area">
-            <p class="placeholder-text">Load an example or paste JSON, then click an action button.</p>
+            <p class="placeholder-text" data-i18n="output_placeholder">Load an example or paste JSON, then click an action button.</p>
           </div>
         </div>
       </div>
@@ -61,37 +83,41 @@
 
     <!-- ===== Scorecards ===== -->
     <section id="scorecards" class="tab-panel">
+      <div class="quickstart-banner" data-tab="scorecards">
+        <span class="quickstart-icon">i</span>
+        <span class="quickstart-text" data-i18n="quickstart_scorecards">Adjust factor sliders to rate thesis quality, market confirmation, and risk discipline. Watch the decision ladder update in real time.</span>
+        <button class="quickstart-dismiss" onclick="this.parentElement.remove()" title="Dismiss">&times;</button>
+      </div>
       <div class="scorecards-grid">
-        <!-- Thesis Quality -->
         <div class="panel scorecard-panel">
-          <h2>Thesis Quality</h2>
+          <h2 data-i18n="thesis_quality">Thesis Quality</h2>
           <div id="thesis-factors" class="factor-list">
             <div class="factor-row" data-factor="evidence_strength">
-              <label>Evidence Strength</label>
+              <label data-i18n="evidence_strength">Evidence Strength</label>
               <input type="range" min="0" max="10" step="0.5" value="5">
               <span class="factor-value">5.0</span>
               <span class="factor-weight">25%</span>
             </div>
             <div class="factor-row" data-factor="source_diversity">
-              <label>Source Diversity</label>
+              <label data-i18n="source_diversity">Source Diversity</label>
               <input type="range" min="0" max="10" step="0.5" value="5">
               <span class="factor-value">5.0</span>
               <span class="factor-weight">20%</span>
             </div>
             <div class="factor-row" data-factor="thesis_clarity">
-              <label>Thesis Clarity</label>
+              <label data-i18n="thesis_clarity">Thesis Clarity</label>
               <input type="range" min="0" max="10" step="0.5" value="5">
               <span class="factor-value">5.0</span>
               <span class="factor-weight">25%</span>
             </div>
             <div class="factor-row" data-factor="catalyst_specificity">
-              <label>Catalyst Specificity</label>
+              <label data-i18n="catalyst_specificity">Catalyst Specificity</label>
               <input type="range" min="0" max="10" step="0.5" value="5">
               <span class="factor-value">5.0</span>
               <span class="factor-weight">15%</span>
             </div>
             <div class="factor-row" data-factor="time_horizon_fit">
-              <label>Time Horizon Fit</label>
+              <label data-i18n="time_horizon_fit">Time Horizon Fit</label>
               <input type="range" min="0" max="10" step="0.5" value="5">
               <span class="factor-value">5.0</span>
               <span class="factor-weight">15%</span>
@@ -99,7 +125,7 @@
           </div>
           <div class="scorecard-result">
             <div class="score-display">
-              <span class="score-label">Score</span>
+              <span class="score-label" data-i18n="score_label">Score</span>
               <span class="score-number" id="thesis-score">50.0</span>
               <span class="score-grade" id="thesis-grade">C</span>
             </div>
@@ -107,36 +133,35 @@
           </div>
         </div>
 
-        <!-- Market Confirmation -->
         <div class="panel scorecard-panel">
-          <h2>Market / Price Confirmation</h2>
+          <h2 data-i18n="market_confirmation">Market / Price Confirmation</h2>
           <div id="market-factors" class="factor-list">
             <div class="factor-row" data-factor="trend_alignment">
-              <label>Trend Alignment</label>
+              <label data-i18n="trend_alignment">Trend Alignment</label>
               <input type="range" min="0" max="10" step="0.5" value="5">
               <span class="factor-value">5.0</span>
               <span class="factor-weight">30%</span>
             </div>
             <div class="factor-row" data-factor="momentum">
-              <label>Momentum</label>
+              <label data-i18n="momentum">Momentum</label>
               <input type="range" min="0" max="10" step="0.5" value="5">
               <span class="factor-value">5.0</span>
               <span class="factor-weight">20%</span>
             </div>
             <div class="factor-row" data-factor="volume_liquidity">
-              <label>Volume / Liquidity</label>
+              <label data-i18n="volume_liquidity">Volume / Liquidity</label>
               <input type="range" min="0" max="10" step="0.5" value="5">
               <span class="factor-value">5.0</span>
               <span class="factor-weight">20%</span>
             </div>
             <div class="factor-row" data-factor="relative_strength">
-              <label>Relative Strength</label>
+              <label data-i18n="relative_strength">Relative Strength</label>
               <input type="range" min="0" max="10" step="0.5" value="5">
               <span class="factor-value">5.0</span>
               <span class="factor-weight">15%</span>
             </div>
             <div class="factor-row" data-factor="regime_alignment">
-              <label>Regime Alignment</label>
+              <label data-i18n="regime_alignment">Regime Alignment</label>
               <input type="range" min="0" max="10" step="0.5" value="5">
               <span class="factor-value">5.0</span>
               <span class="factor-weight">15%</span>
@@ -144,7 +169,7 @@
           </div>
           <div class="scorecard-result">
             <div class="score-display">
-              <span class="score-label">Score</span>
+              <span class="score-label" data-i18n="score_label">Score</span>
               <span class="score-number" id="market-score">50.0</span>
               <span class="score-grade" id="market-grade">C</span>
             </div>
@@ -152,42 +177,41 @@
           </div>
         </div>
 
-        <!-- Risk / Execution -->
         <div class="panel scorecard-panel">
-          <h2>Risk &amp; Execution Discipline</h2>
+          <h2 data-i18n="risk_execution">Risk &amp; Execution Discipline</h2>
           <div id="risk-factors" class="factor-list">
             <div class="factor-row" data-factor="invalidation_clarity">
-              <label>Invalidation Clarity</label>
+              <label data-i18n="invalidation_clarity">Invalidation Clarity</label>
               <input type="range" min="0" max="10" step="0.5" value="5">
               <span class="factor-value">5.0</span>
               <span class="factor-weight">25%</span>
             </div>
             <div class="factor-row" data-factor="max_loss_defined">
-              <label>Max Loss Defined</label>
+              <label data-i18n="max_loss_defined">Max Loss Defined</label>
               <input type="range" min="0" max="10" step="0.5" value="5">
               <span class="factor-value">5.0</span>
               <span class="factor-weight">20%</span>
             </div>
             <div class="factor-row" data-factor="position_sizing_discipline">
-              <label>Position Sizing Discipline</label>
+              <label data-i18n="position_sizing_discipline">Position Sizing Discipline</label>
               <input type="range" min="0" max="10" step="0.5" value="5">
               <span class="factor-value">5.0</span>
               <span class="factor-weight">20%</span>
             </div>
             <div class="factor-row" data-factor="liquidity_slippage_risk">
-              <label>Liquidity / Slippage</label>
+              <label data-i18n="liquidity_slippage_risk">Liquidity / Slippage</label>
               <input type="range" min="0" max="10" step="0.5" value="5">
               <span class="factor-value">5.0</span>
               <span class="factor-weight">15%</span>
             </div>
             <div class="factor-row" data-factor="concentration_risk">
-              <label>Concentration Risk</label>
+              <label data-i18n="concentration_risk">Concentration Risk</label>
               <input type="range" min="0" max="10" step="0.5" value="5">
               <span class="factor-value">5.0</span>
               <span class="factor-weight">10%</span>
             </div>
             <div class="factor-row" data-factor="time_stop">
-              <label>Time Stop</label>
+              <label data-i18n="time_stop">Time Stop</label>
               <input type="range" min="0" max="10" step="0.5" value="5">
               <span class="factor-value">5.0</span>
               <span class="factor-weight">10%</span>
@@ -195,7 +219,7 @@
           </div>
           <div class="scorecard-result">
             <div class="score-display">
-              <span class="score-label">Score</span>
+              <span class="score-label" data-i18n="score_label">Score</span>
               <span class="score-number" id="risk-score">50.0</span>
               <span class="score-grade" id="risk-grade">C</span>
             </div>
@@ -203,28 +227,27 @@
           </div>
         </div>
 
-        <!-- Decision Readiness -->
         <div class="panel scorecard-panel">
-          <h2>Decision Readiness</h2>
+          <h2 data-i18n="decision_readiness">Decision Readiness</h2>
           <div class="decision-ladder">
             <div class="ladder-step" data-level="information">
               <span class="ladder-icon">&#9675;</span>
-              <span class="ladder-label">Information</span>
+              <span class="ladder-label" data-i18n="ladder_information">Information</span>
             </div>
             <div class="ladder-connector"></div>
             <div class="ladder-step" data-level="watch">
               <span class="ladder-icon">&#9675;</span>
-              <span class="ladder-label">Watch</span>
+              <span class="ladder-label" data-i18n="ladder_watch">Watch</span>
             </div>
             <div class="ladder-connector"></div>
             <div class="ladder-step" data-level="candidate">
               <span class="ladder-icon">&#9675;</span>
-              <span class="ladder-label">Candidate</span>
+              <span class="ladder-label" data-i18n="ladder_candidate">Candidate</span>
             </div>
             <div class="ladder-connector"></div>
             <div class="ladder-step" data-level="action">
               <span class="ladder-icon">&#9675;</span>
-              <span class="ladder-label">Action</span>
+              <span class="ladder-label" data-i18n="ladder_action">Action</span>
             </div>
           </div>
           <div id="decision-blockers" class="blockers-list"></div>
@@ -235,106 +258,61 @@
 
     <!-- ===== Scenario & Sizing ===== -->
     <section id="scenario-sizing" class="tab-panel">
+      <div class="quickstart-banner" data-tab="scenario-sizing">
+        <span class="quickstart-icon">i</span>
+        <span class="quickstart-text" data-i18n="quickstart_scenario_sizing">Set bull/base/bear probabilities to see expected value. Configure position sizing based on your portfolio and risk tolerance.</span>
+        <button class="quickstart-dismiss" onclick="this.parentElement.remove()" title="Dismiss">&times;</button>
+      </div>
       <div class="panel-grid">
-        <!-- Expected Value -->
         <div class="panel">
-          <h2>Expected Value / Scenario Model</h2>
+          <h2 data-i18n="ev_title">Expected Value / Scenario Model</h2>
           <div class="scenario-inputs">
             <div class="scenario-row header-row">
               <span></span>
-              <span>Probability</span>
-              <span>Return (%)</span>
+              <span data-i18n="probability">Probability</span>
+              <span data-i18n="return_pct">Return (%)</span>
             </div>
             <div class="scenario-row" data-scenario="bull">
-              <label>Bull</label>
+              <label data-i18n="scenario_bull">Bull</label>
               <input type="number" id="ev-bull-prob" value="0.25" step="0.05" min="0" max="1">
               <input type="number" id="ev-bull-ret" value="15" step="1">
             </div>
             <div class="scenario-row" data-scenario="base">
-              <label>Base</label>
+              <label data-i18n="scenario_base">Base</label>
               <input type="number" id="ev-base-prob" value="0.50" step="0.05" min="0" max="1">
               <input type="number" id="ev-base-ret" value="3" step="1">
             </div>
             <div class="scenario-row" data-scenario="bear">
-              <label>Bear</label>
+              <label data-i18n="scenario_bear">Bear</label>
               <input type="number" id="ev-bear-prob" value="0.25" step="0.05" min="0" max="1">
               <input type="number" id="ev-bear-ret" value="-8" step="1">
             </div>
           </div>
           <div class="ev-results">
-            <div class="ev-metric">
-              <span class="metric-label">Expected Return</span>
-              <span class="metric-value" id="ev-expected">+3.50%</span>
-            </div>
-            <div class="ev-metric">
-              <span class="metric-label">Max Drawdown</span>
-              <span class="metric-value" id="ev-drawdown">-8.00%</span>
-            </div>
-            <div class="ev-metric">
-              <span class="metric-label">Payoff Asymmetry</span>
-              <span class="metric-value" id="ev-asymmetry">1.25x</span>
-            </div>
-            <div class="ev-metric">
-              <span class="metric-label">Quality</span>
-              <span class="metric-value" id="ev-quality">Marginal</span>
-            </div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="ev_expected">Expected Return</span><span class="metric-value" id="ev-expected">+3.50%</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="ev_drawdown">Max Drawdown</span><span class="metric-value" id="ev-drawdown">-8.00%</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="ev_asymmetry">Payoff Asymmetry</span><span class="metric-value" id="ev-asymmetry">1.25x</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="ev_quality">Quality</span><span class="metric-value" id="ev-quality">Marginal</span></div>
           </div>
         </div>
 
-        <!-- Position Sizing -->
         <div class="panel">
-          <h2>Risk-Budget Position Sizing</h2>
+          <h2 data-i18n="sizing_title">Risk-Budget Position Sizing</h2>
           <div class="sizing-inputs">
-            <div class="input-row">
-              <label>Portfolio Value</label>
-              <input type="number" id="sz-portfolio" value="500000" step="10000">
-            </div>
-            <div class="input-row">
-              <label>Max Risk (%)</label>
-              <input type="number" id="sz-max-risk" value="2" step="0.5" min="0.1" max="10">
-            </div>
-            <div class="input-row">
-              <label>Entry Price</label>
-              <input type="number" id="sz-entry" value="1.02" step="0.01">
-            </div>
-            <div class="input-row">
-              <label>Stop Distance (%)</label>
-              <input type="number" id="sz-stop" value="4" step="0.5" min="0.1">
-            </div>
-            <div class="input-row">
-              <label>Confidence (0-100)</label>
-              <input type="number" id="sz-confidence" value="75" step="5" min="0" max="100">
-            </div>
-            <div class="input-row">
-              <label>Target Return (%)</label>
-              <input type="number" id="sz-target" value="15" step="1">
-            </div>
+            <div class="input-row"><label data-i18n="sz_portfolio">Portfolio Value</label><input type="number" id="sz-portfolio" value="500000" step="10000"></div>
+            <div class="input-row"><label data-i18n="sz_max_risk">Max Risk (%)</label><input type="number" id="sz-max-risk" value="2" step="0.5" min="0.1" max="10"></div>
+            <div class="input-row"><label data-i18n="sz_entry">Entry Price</label><input type="number" id="sz-entry" value="1.02" step="0.01"></div>
+            <div class="input-row"><label data-i18n="sz_stop">Stop Distance (%)</label><input type="number" id="sz-stop" value="4" step="0.5" min="0.1"></div>
+            <div class="input-row"><label data-i18n="sz_confidence">Confidence (0-100)</label><input type="number" id="sz-confidence" value="75" step="5" min="0" max="100"></div>
+            <div class="input-row"><label data-i18n="sz_target">Target Return (%)</label><input type="number" id="sz-target" value="15" step="1"></div>
           </div>
           <div class="sizing-results">
-            <div class="sizing-metric">
-              <span class="metric-label">Risk Budget</span>
-              <span class="metric-value" id="sz-risk-amount">10,000</span>
-            </div>
-            <div class="sizing-metric">
-              <span class="metric-label">Raw Shares</span>
-              <span class="metric-value" id="sz-raw-shares">245,098</span>
-            </div>
-            <div class="sizing-metric">
-              <span class="metric-label">Adjusted Shares</span>
-              <span class="metric-value" id="sz-adj-shares">183,824</span>
-            </div>
-            <div class="sizing-metric">
-              <span class="metric-label">Position Value</span>
-              <span class="metric-value" id="sz-position-value">187,500</span>
-            </div>
-            <div class="sizing-metric">
-              <span class="metric-label">% of Portfolio</span>
-              <span class="metric-value" id="sz-position-pct">37.5%</span>
-            </div>
-            <div class="sizing-metric">
-              <span class="metric-label">Risk/Reward</span>
-              <span class="metric-value" id="sz-rr">3.75:1</span>
-            </div>
+            <div class="sizing-metric"><span class="metric-label" data-i18n="sz_risk_amount">Risk Budget</span><span class="metric-value" id="sz-risk-amount">10,000</span></div>
+            <div class="sizing-metric"><span class="metric-label" data-i18n="sz_raw_shares">Raw Shares</span><span class="metric-value" id="sz-raw-shares">245,098</span></div>
+            <div class="sizing-metric"><span class="metric-label" data-i18n="sz_adj_shares">Adjusted Shares</span><span class="metric-value" id="sz-adj-shares">183,824</span></div>
+            <div class="sizing-metric"><span class="metric-label" data-i18n="sz_position_value">Position Value</span><span class="metric-value" id="sz-position-value">187,500</span></div>
+            <div class="sizing-metric"><span class="metric-label" data-i18n="sz_position_pct">% of Portfolio</span><span class="metric-value" id="sz-position-pct">37.5%</span></div>
+            <div class="sizing-metric"><span class="metric-label" data-i18n="sz_rr">Risk/Reward</span><span class="metric-value" id="sz-rr">3.75:1</span></div>
           </div>
           <div id="sizing-notes" class="notes-list"></div>
         </div>
@@ -343,143 +321,87 @@
 
     <!-- ===== Portfolio ===== -->
     <section id="portfolio" class="tab-panel">
+      <div class="quickstart-banner" data-tab="portfolio">
+        <span class="quickstart-icon">i</span>
+        <span class="quickstart-text" data-i18n="quickstart_portfolio">Paste your portfolio JSON (holdings, cash, policy) and click Analyze to see exposures, risk budget, and stress test results.</span>
+        <button class="quickstart-dismiss" onclick="this.parentElement.remove()" title="Dismiss">&times;</button>
+      </div>
       <div class="panel">
         <div class="panel-header">
-          <h2>Portfolio Risk Workstation</h2>
+          <h2 data-i18n="portfolio_title">Portfolio Risk Workstation</h2>
           <div class="btn-group">
-            <button id="btn-portfolio-load" class="btn btn-sm">Load Example</button>
-            <button id="btn-portfolio-analyze" class="btn btn-sm btn-primary">Analyze</button>
-            <button id="btn-portfolio-copy" class="btn btn-sm">Copy JSON</button>
+            <button id="btn-portfolio-load" class="btn btn-sm" data-i18n="btn_load_example">Load Example</button>
+            <button id="btn-portfolio-analyze" class="btn btn-sm btn-primary" data-i18n="btn_analyze">Analyze</button>
+            <button id="btn-portfolio-copy" class="btn btn-sm" data-i18n="btn_copy_json">Copy JSON</button>
           </div>
         </div>
-        <textarea id="portfolio-editor" spellcheck="false" placeholder="Paste portfolio JSON here (holdings, cash, policy, candidates, scenarios)..."></textarea>
+        <textarea id="portfolio-editor" spellcheck="false" data-i18n-placeholder="portfolio_placeholder" placeholder="Paste portfolio JSON here..."></textarea>
       </div>
-
-      <!-- Portfolio Summary -->
       <div class="portfolio-grid">
         <div class="panel" id="portfolio-summary-panel">
-          <h2>Portfolio Summary</h2>
+          <h2 data-i18n="pf_total_value">Portfolio Summary</h2>
           <div class="summary-metrics">
-            <div class="ev-metric">
-              <span class="metric-label">Total Value</span>
-              <span class="metric-value" id="pf-total-value">--</span>
-            </div>
-            <div class="ev-metric">
-              <span class="metric-label">Cash</span>
-              <span class="metric-value" id="pf-cash">--</span>
-            </div>
-            <div class="ev-metric">
-              <span class="metric-label">Invested</span>
-              <span class="metric-value" id="pf-invested">--</span>
-            </div>
-            <div class="ev-metric">
-              <span class="metric-label">Total Risk</span>
-              <span class="metric-value" id="pf-total-risk">--</span>
-            </div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="pf_total_value">Total Value</span><span class="metric-value" id="pf-total-value">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="pf_cash">Cash</span><span class="metric-value" id="pf-cash">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="pf_invested">Invested</span><span class="metric-value" id="pf-invested">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="pf_total_risk">Total Risk</span><span class="metric-value" id="pf-total-risk">--</span></div>
           </div>
         </div>
-
-        <!-- Risk Budget -->
         <div class="panel" id="risk-budget-panel">
-          <h2>Risk Budget</h2>
+          <h2 data-i18n="risk_budget_title">Risk Budget</h2>
           <div class="risk-budget-bar-container">
-            <div class="risk-budget-bar" id="risk-budget-bar">
-              <div class="risk-budget-fill" id="risk-budget-fill"></div>
-            </div>
+            <div class="risk-budget-bar"><div class="risk-budget-fill" id="risk-budget-fill"></div></div>
             <span class="risk-budget-label" id="risk-budget-label">0%</span>
           </div>
           <div class="summary-metrics" style="margin-top:12px">
-            <div class="ev-metric">
-              <span class="metric-label">Budget</span>
-              <span class="metric-value" id="rb-budget">--</span>
-            </div>
-            <div class="ev-metric">
-              <span class="metric-label">Used</span>
-              <span class="metric-value" id="rb-used">--</span>
-            </div>
-            <div class="ev-metric">
-              <span class="metric-label">Remaining</span>
-              <span class="metric-value" id="rb-remaining">--</span>
-            </div>
-            <div class="ev-metric">
-              <span class="metric-label">Utilization</span>
-              <span class="metric-value" id="rb-utilization">--</span>
-            </div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="rb_budget">Budget</span><span class="metric-value" id="rb-budget">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="rb_used">Used</span><span class="metric-value" id="rb-used">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="rb_remaining">Remaining</span><span class="metric-value" id="rb-remaining">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="rb_utilization">Utilization</span><span class="metric-value" id="rb-utilization">--</span></div>
           </div>
         </div>
       </div>
-
-      <!-- Positions Table -->
       <div class="panel">
-        <h2>Position Exposures</h2>
+        <h2 data-i18n="positions_title">Position Exposures</h2>
         <div class="table-container">
           <table class="data-table" id="positions-table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Name</th>
-                <th>Sector</th>
-                <th>Value</th>
-                <th>Exposure %</th>
-                <th>P&L %</th>
-                <th>Risk %</th>
-              </tr>
-            </thead>
+            <thead><tr>
+              <th data-i18n="table_code">Code</th><th data-i18n="table_name">Name</th><th data-i18n="table_sector">Sector</th>
+              <th data-i18n="table_value">Value</th><th data-i18n="table_exposure">Exposure %</th>
+              <th data-i18n="table_pl">P&L %</th><th data-i18n="table_risk">Risk %</th>
+            </tr></thead>
             <tbody id="positions-tbody"></tbody>
           </table>
         </div>
       </div>
-
-      <!-- Sectors Table -->
       <div class="panel">
-        <h2>Sector Exposures</h2>
+        <h2 data-i18n="sectors_title">Sector Exposures</h2>
         <div class="table-container">
           <table class="data-table" id="sectors-table">
-            <thead>
-              <tr>
-                <th>Sector</th>
-                <th>Value</th>
-                <th>Exposure %</th>
-                <th>Positions</th>
-                <th>Codes</th>
-              </tr>
-            </thead>
+            <thead><tr>
+              <th data-i18n="table_sector">Sector</th><th data-i18n="table_value">Value</th>
+              <th data-i18n="table_exposure">Exposure %</th><th data-i18n="table_positions">Positions</th><th data-i18n="table_codes">Codes</th>
+            </tr></thead>
             <tbody id="sectors-tbody"></tbody>
           </table>
         </div>
       </div>
-
-      <!-- Candidate Watchlist -->
       <div class="panel">
-        <h2>Candidate Watchlist</h2>
+        <h2 data-i18n="candidates_title">Candidate Watchlist</h2>
         <div class="table-container">
           <table class="data-table" id="candidates-table">
-            <thead>
-              <tr>
-                <th>Rank</th>
-                <th>Code</th>
-                <th>Score</th>
-                <th>Direction</th>
-                <th>Sector</th>
-                <th>Exp Ret %</th>
-                <th>Passes</th>
-                <th>Issues</th>
-              </tr>
-            </thead>
+            <thead><tr>
+              <th data-i18n="table_rank">Rank</th><th data-i18n="table_code">Code</th><th data-i18n="table_score">Score</th>
+              <th data-i18n="table_direction">Direction</th><th data-i18n="table_sector">Sector</th>
+              <th data-i18n="table_exp_ret">Exp Ret %</th><th data-i18n="table_passes">Passes</th><th data-i18n="table_issues">Issues</th>
+            </tr></thead>
             <tbody id="candidates-tbody"></tbody>
           </table>
         </div>
       </div>
-
-      <!-- Stress Tests -->
-      <div class="panel">
-        <h2>Stress Test Results</h2>
-        <div id="stress-results"></div>
-      </div>
-
-      <!-- Blockers & Warnings -->
+      <div class="panel"><h2 data-i18n="stress_title">Stress Test Results</h2><div id="stress-results"></div></div>
       <div class="panel" id="portfolio-issues-panel">
-        <h2>Portfolio Blockers &amp; Warnings</h2>
+        <h2 data-i18n="pf_issues_title">Portfolio Blockers &amp; Warnings</h2>
         <div id="portfolio-blockers" class="blockers-list"></div>
         <div id="portfolio-warnings" class="notes-list"></div>
       </div>
@@ -487,128 +409,93 @@
 
     <!-- ===== Rebalance ===== -->
     <section id="rebalance" class="tab-panel">
+      <div class="quickstart-banner" data-tab="rebalance">
+        <span class="quickstart-icon">i</span>
+        <span class="quickstart-text" data-i18n="quickstart_rebalance">Paste rebalance plan JSON with holdings, targets, and candidates. Generate a trade plan with orders, rationale, and guardrail checks.</span>
+        <button class="quickstart-dismiss" onclick="this.parentElement.remove()" title="Dismiss">&times;</button>
+      </div>
       <div class="panel">
         <div class="panel-header">
-          <h2>Rebalance / Trade Plan</h2>
+          <h2 data-i18n="rebal_title">Rebalance / Trade Plan</h2>
           <div class="btn-group">
-            <button id="btn-rebal-load" class="btn btn-sm">Load Example</button>
-            <button id="btn-rebal-analyze" class="btn btn-sm btn-primary">Generate Plan</button>
-            <button id="btn-rebal-copy" class="btn btn-sm">Copy JSON</button>
+            <button id="btn-rebal-load" class="btn btn-sm" data-i18n="btn_rebal_load">Load Example</button>
+            <button id="btn-rebal-analyze" class="btn btn-sm btn-primary" data-i18n="btn_rebal_analyze">Generate Plan</button>
+            <button id="btn-rebal-copy" class="btn btn-sm" data-i18n="btn_rebal_copy">Copy JSON</button>
           </div>
         </div>
-        <textarea id="rebal-editor" spellcheck="false" placeholder="Paste rebalance plan JSON here (holdings, cash, policy, targets, candidates, costs)..."></textarea>
+        <textarea id="rebal-editor" spellcheck="false" data-i18n-placeholder="rebal_placeholder" placeholder="Paste rebalance plan JSON here..."></textarea>
       </div>
-
-      <!-- Before/After Summary -->
       <div class="rebal-summary-grid">
         <div class="panel" id="rebal-before-panel">
-          <h2>Current Portfolio</h2>
+          <h2 data-i18n="rebal_current">Current Portfolio</h2>
           <div class="summary-metrics">
-            <div class="ev-metric"><span class="metric-label">Total Value</span><span class="metric-value" id="rb-before-total">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Cash</span><span class="metric-value" id="rb-before-cash">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Invested</span><span class="metric-value" id="rb-before-invested">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="pf_total_value">Total Value</span><span class="metric-value" id="rb-before-total">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="pf_cash">Cash</span><span class="metric-value" id="rb-before-cash">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="pf_invested">Invested</span><span class="metric-value" id="rb-before-invested">--</span></div>
           </div>
         </div>
         <div class="panel" id="rebal-after-panel">
-          <h2>Projected After Rebalance</h2>
+          <h2 data-i18n="rebal_projected">Projected After Rebalance</h2>
           <div class="summary-metrics">
-            <div class="ev-metric"><span class="metric-label">Total Value</span><span class="metric-value" id="rb-after-total">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Cash</span><span class="metric-value" id="rb-after-cash">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Invested</span><span class="metric-value" id="rb-after-invested">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="pf_total_value">Total Value</span><span class="metric-value" id="rb-after-total">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="pf_cash">Cash</span><span class="metric-value" id="rb-after-cash">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="pf_invested">Invested</span><span class="metric-value" id="rb-after-invested">--</span></div>
           </div>
         </div>
         <div class="panel" id="rebal-cost-panel">
-          <h2>Transaction Costs</h2>
+          <h2 data-i18n="rebal_costs">Transaction Costs</h2>
           <div class="summary-metrics">
-            <div class="ev-metric"><span class="metric-label">Commission</span><span class="metric-value" id="rb-commission">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Slippage</span><span class="metric-value" id="rb-slippage">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Total Cost</span><span class="metric-value" id="rb-total-cost">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Turnover</span><span class="metric-value" id="rb-turnover">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="rb_commission">Commission</span><span class="metric-value" id="rb-commission">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="rb_slippage">Slippage</span><span class="metric-value" id="rb-slippage">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="rb_total_cost">Total Cost</span><span class="metric-value" id="rb-total-cost">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="rb_turnover">Turnover</span><span class="metric-value" id="rb-turnover">--</span></div>
           </div>
         </div>
       </div>
-
-      <!-- Order Blotter -->
       <div class="panel">
-        <h2>Proposed Orders</h2>
+        <h2 data-i18n="orders_title">Proposed Orders</h2>
         <div class="table-container">
           <table class="data-table" id="rebal-orders-table">
-            <thead>
-              <tr>
-                <th>Action</th>
-                <th>Code</th>
-                <th>Name</th>
-                <th>Shares</th>
-                <th>Value</th>
-                <th>Cost</th>
-                <th>Current %</th>
-                <th>Target %</th>
-                <th>Phase</th>
-              </tr>
-            </thead>
+            <thead><tr>
+              <th data-i18n="table_action">Action</th><th data-i18n="table_code">Code</th><th data-i18n="table_name">Name</th>
+              <th data-i18n="table_shares">Shares</th><th data-i18n="table_value">Value</th><th data-i18n="table_cost">Cost</th>
+              <th data-i18n="table_current_pct">Current %</th><th data-i18n="table_target_pct">Target %</th><th data-i18n="table_phase">Phase</th>
+            </tr></thead>
             <tbody id="rebal-orders-tbody"></tbody>
           </table>
         </div>
       </div>
-
-      <!-- Order Rationale -->
+      <div class="panel"><h2 data-i18n="rationale_title">Order Rationale</h2><div id="rebal-rationale" class="notes-list"></div></div>
       <div class="panel">
-        <h2>Order Rationale</h2>
-        <div id="rebal-rationale" class="notes-list"></div>
-      </div>
-
-      <!-- Guardrails -->
-      <div class="panel">
-        <h2>Guardrails</h2>
+        <h2 data-i18n="guardrails_title">Guardrails</h2>
         <div class="table-container">
           <table class="data-table" id="rebal-guardrails-table">
-            <thead>
-              <tr>
-                <th>Rule</th>
-                <th>Description</th>
-                <th>Current</th>
-                <th>Limit</th>
-                <th>Status</th>
-              </tr>
-            </thead>
+            <thead><tr>
+              <th data-i18n="table_rule">Rule</th><th data-i18n="table_description">Description</th>
+              <th data-i18n="table_current">Current</th><th data-i18n="table_limit">Limit</th><th data-i18n="table_status">Status</th>
+            </tr></thead>
             <tbody id="rebal-guardrails-tbody"></tbody>
           </table>
         </div>
       </div>
-
-      <!-- Execution Plan -->
-      <div class="panel">
-        <h2>Execution Plan</h2>
-        <div id="rebal-execution"></div>
-      </div>
-
-      <!-- Blockers & Warnings -->
+      <div class="panel"><h2 data-i18n="execution_title">Execution Plan</h2><div id="rebal-execution"></div></div>
       <div class="panel" id="rebal-issues-panel">
-        <h2>Blockers &amp; Warnings</h2>
-        <div id="rebal-blockers" class="blockers-list"></div>
-        <div id="rebal-warnings" class="notes-list"></div>
+        <h2 data-i18n="rebal_issues_title">Blockers &amp; Warnings</h2>
+        <div id="rebal-blockers" class="blockers-list"></div><div id="rebal-warnings" class="notes-list"></div>
       </div>
-
-      <!-- Before/After Positions -->
       <div class="rebal-positions-grid">
-        <div class="panel">
-          <h2>Current Positions</h2>
+        <div class="panel"><h2 data-i18n="rebal_current_pos">Current Positions</h2>
           <div class="table-container">
             <table class="data-table" id="rebal-before-pos-table">
-              <thead>
-                <tr><th>Code</th><th>Name</th><th>Sector</th><th>Shares</th><th>Value</th><th>Weight %</th></tr>
-              </thead>
+              <thead><tr><th data-i18n="table_code">Code</th><th data-i18n="table_name">Name</th><th data-i18n="table_sector">Sector</th><th data-i18n="table_shares">Shares</th><th data-i18n="table_value">Value</th><th data-i18n="table_weight">Weight %</th></tr></thead>
               <tbody id="rebal-before-pos-tbody"></tbody>
             </table>
           </div>
         </div>
-        <div class="panel">
-          <h2>Projected Positions</h2>
+        <div class="panel"><h2 data-i18n="rebal_projected_pos">Projected Positions</h2>
           <div class="table-container">
             <table class="data-table" id="rebal-after-pos-table">
-              <thead>
-                <tr><th>Code</th><th>Name</th><th>Sector</th><th>Shares</th><th>Value</th><th>Weight %</th></tr>
-              </thead>
+              <thead><tr><th data-i18n="table_code">Code</th><th data-i18n="table_name">Name</th><th data-i18n="table_sector">Sector</th><th data-i18n="table_shares">Shares</th><th data-i18n="table_value">Value</th><th data-i18n="table_weight">Weight %</th></tr></thead>
               <tbody id="rebal-after-pos-tbody"></tbody>
             </table>
           </div>
@@ -618,208 +505,182 @@
 
     <!-- ===== Backtest ===== -->
     <section id="backtest" class="tab-panel">
+      <div class="quickstart-banner" data-tab="backtest">
+        <span class="quickstart-icon">i</span>
+        <span class="quickstart-text" data-i18n="quickstart_backtest">Paste backtest scenario with price series and signal events. Run to see simulated trading, equity curve, and performance stats.</span>
+        <button class="quickstart-dismiss" onclick="this.parentElement.remove()" title="Dismiss">&times;</button>
+      </div>
       <div class="panel">
         <div class="panel-header">
-          <h2>Backtest / Signal Replay Lab</h2>
+          <h2 data-i18n="bt_title">Backtest / Signal Replay Lab</h2>
           <div class="btn-group">
-            <button id="btn-bt-load" class="btn btn-sm">Load Example</button>
-            <button id="btn-bt-run" class="btn btn-sm btn-primary">Run Backtest</button>
-            <button id="btn-bt-copy" class="btn btn-sm">Copy JSON</button>
+            <button id="btn-bt-load" class="btn btn-sm" data-i18n="btn_bt_load">Load Example</button>
+            <button id="btn-bt-run" class="btn btn-sm btn-primary" data-i18n="btn_bt_run">Run Backtest</button>
+            <button id="btn-bt-copy" class="btn btn-sm" data-i18n="btn_bt_copy">Copy JSON</button>
           </div>
         </div>
-        <textarea id="bt-editor" spellcheck="false" placeholder="Paste backtest scenario JSON here (initial_capital, price_series, signal_events, benchmark, costs, risk_rules)..."></textarea>
+        <textarea id="bt-editor" spellcheck="false" data-i18n-placeholder="bt_placeholder" placeholder="Paste backtest scenario JSON here..."></textarea>
       </div>
-
-      <!-- Summary Metrics -->
       <div class="bt-summary-grid">
         <div class="panel">
-          <h2>Performance</h2>
+          <h2 data-i18n="bt_performance">Performance</h2>
           <div class="summary-metrics">
-            <div class="ev-metric"><span class="metric-label">Initial Capital</span><span class="metric-value" id="bt-initial">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Final Equity</span><span class="metric-value" id="bt-final">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Total Return</span><span class="metric-value" id="bt-return">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Max Drawdown</span><span class="metric-value" id="bt-dd">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="bt_initial">Initial Capital</span><span class="metric-value" id="bt-initial">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="bt_final">Final Equity</span><span class="metric-value" id="bt-final">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="bt_return">Total Return</span><span class="metric-value" id="bt-return">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="bt_dd">Max Drawdown</span><span class="metric-value" id="bt-dd">--</span></div>
           </div>
         </div>
         <div class="panel">
-          <h2>Trade Stats</h2>
+          <h2 data-i18n="bt_trade_stats">Trade Stats</h2>
           <div class="summary-metrics">
-            <div class="ev-metric"><span class="metric-label">Total Trades</span><span class="metric-value" id="bt-trades">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Win Rate</span><span class="metric-value" id="bt-winrate">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Avg Return</span><span class="metric-value" id="bt-avg-ret">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Avg R-Multiple</span><span class="metric-value" id="bt-avg-r">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="bt_trades_count">Total Trades</span><span class="metric-value" id="bt-trades">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="bt_win_rate">Win Rate</span><span class="metric-value" id="bt-winrate">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="bt_avg_ret">Avg Return</span><span class="metric-value" id="bt-avg-ret">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="bt_avg_r">Avg R-Multiple</span><span class="metric-value" id="bt-avg-r">--</span></div>
           </div>
         </div>
         <div class="panel">
-          <h2>Costs &amp; Benchmark</h2>
+          <h2 data-i18n="bt_costs_bench">Costs &amp; Benchmark</h2>
           <div class="summary-metrics">
-            <div class="ev-metric"><span class="metric-label">Total Costs</span><span class="metric-value" id="bt-costs">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Turnover</span><span class="metric-value" id="bt-turnover">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Benchmark Return</span><span class="metric-value" id="bt-bench-ret">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Alpha</span><span class="metric-value" id="bt-alpha">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="bt_total_costs">Total Costs</span><span class="metric-value" id="bt-costs">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="rb_turnover">Turnover</span><span class="metric-value" id="bt-turnover">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="bt_bench_ret">Benchmark Return</span><span class="metric-value" id="bt-bench-ret">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="bt_alpha">Alpha</span><span class="metric-value" id="bt-alpha">--</span></div>
           </div>
         </div>
       </div>
-
-      <!-- Equity Curve Chart (ASCII bar) -->
       <div class="panel">
-        <h2>Equity Curve</h2>
+        <h2 data-i18n="bt_equity_curve">Equity Curve</h2>
         <div id="bt-equity-chart" class="bt-equity-chart"></div>
         <div class="table-container" style="margin-top:12px">
           <table class="data-table" id="bt-equity-table">
-            <thead>
-              <tr><th>Date</th><th>Cash</th><th>Positions</th><th>Total</th><th>Drawdown</th><th>Benchmark</th></tr>
-            </thead>
+            <thead><tr>
+              <th data-i18n="table_date">Date</th><th data-i18n="table_cash">Cash</th><th data-i18n="table_positions_val">Positions</th>
+              <th data-i18n="table_total">Total</th><th data-i18n="table_drawdown">Drawdown</th><th data-i18n="table_benchmark">Benchmark</th>
+            </tr></thead>
             <tbody id="bt-equity-tbody"></tbody>
           </table>
         </div>
       </div>
-
-      <!-- Trades -->
       <div class="panel">
-        <h2>Trades</h2>
+        <h2 data-i18n="bt_trades_table">Trades</h2>
         <div class="table-container">
           <table class="data-table" id="bt-trades-table">
-            <thead>
-              <tr><th>Asset</th><th>Entry</th><th>Exit</th><th>Shares</th><th>Entry Px</th><th>Exit Px</th><th>P&L</th><th>Return</th><th>R-Mult</th><th>Days</th><th>Exit Reason</th></tr>
-            </thead>
+            <thead><tr>
+              <th data-i18n="table_asset">Asset</th><th data-i18n="table_entry">Entry</th><th data-i18n="table_exit">Exit</th>
+              <th data-i18n="table_shares">Shares</th><th data-i18n="table_entry_px">Entry Px</th><th data-i18n="table_exit_px">Exit Px</th>
+              <th data-i18n="table_pnl">P&L</th><th data-i18n="table_return">Return</th><th data-i18n="table_r_mult">R-Mult</th>
+              <th data-i18n="table_days">Days</th><th data-i18n="table_exit_reason">Exit Reason</th>
+            </tr></thead>
             <tbody id="bt-trades-tbody"></tbody>
           </table>
         </div>
       </div>
-
-      <!-- Event Log -->
-      <div class="panel">
-        <h2>Event Log</h2>
-        <div id="bt-event-log" class="notes-list"></div>
-      </div>
-
-      <!-- Blocked Events -->
-      <div class="panel" id="bt-blocked-panel">
-        <h2>Blocked / Skipped Events</h2>
-        <div id="bt-blocked-list" class="blockers-list"></div>
-      </div>
+      <div class="panel"><h2 data-i18n="bt_event_log">Event Log</h2><div id="bt-event-log" class="notes-list"></div></div>
+      <div class="panel" id="bt-blocked-panel"><h2 data-i18n="bt_blocked">Blocked / Skipped Events</h2><div id="bt-blocked-list" class="blockers-list"></div></div>
     </section>
 
-    <!-- ===== Monte Carlo Risk Simulator ===== -->
+    <!-- ===== Monte Carlo ===== -->
     <section id="monte-carlo" class="tab-panel">
+      <div class="quickstart-banner" data-tab="monte-carlo">
+        <span class="quickstart-icon">i</span>
+        <span class="quickstart-text" data-i18n="quickstart_monte_carlo">Configure simulation parameters and click Run to see thousands of possible future paths, risk bands, and drawdown probabilities.</span>
+        <button class="quickstart-dismiss" onclick="this.parentElement.remove()" title="Dismiss">&times;</button>
+      </div>
       <div class="panel">
         <div class="panel-header">
-          <h2>Monte Carlo Risk Simulator / Drawdown Lab</h2>
+          <h2 data-i18n="mc_title">Monte Carlo Risk Simulator / Drawdown Lab</h2>
           <div class="btn-group">
-            <button id="btn-mc-load" class="btn btn-sm">Load Example</button>
-            <button id="btn-mc-run" class="btn btn-sm btn-primary">Run Simulation</button>
-            <button id="btn-mc-stress" class="btn btn-sm">Load Stress Example</button>
-            <button id="btn-mc-copy" class="btn btn-sm">Copy JSON</button>
+            <button id="btn-mc-load" class="btn btn-sm" data-i18n="btn_mc_load">Load Example</button>
+            <button id="btn-mc-run" class="btn btn-sm btn-primary" data-i18n="btn_mc_run">Run Simulation</button>
+            <button id="btn-mc-stress" class="btn btn-sm" data-i18n="btn_mc_stress">Load Stress Example</button>
+            <button id="btn-mc-copy" class="btn btn-sm" data-i18n="btn_mc_copy">Copy JSON</button>
           </div>
         </div>
-        <textarea id="mc-editor" spellcheck="false" placeholder="Paste Monte Carlo config JSON here (initial_capital, num_simulations, horizon_days, seed, method, price_series, weights, cash_weight, rebalance_cadence, stress, drawdown_breach_pct)..."></textarea>
+        <textarea id="mc-editor" spellcheck="false" data-i18n-placeholder="mc_placeholder" placeholder="Paste Monte Carlo config JSON here..."></textarea>
       </div>
-
-      <!-- Config Summary -->
       <div class="mc-summary-grid">
         <div class="panel">
-          <h2>Configuration</h2>
+          <h2 data-i18n="mc_config">Configuration</h2>
           <div class="summary-metrics">
-            <div class="ev-metric"><span class="metric-label">Simulations</span><span class="metric-value" id="mc-sims">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Horizon</span><span class="metric-value" id="mc-horizon">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Method</span><span class="metric-value" id="mc-method">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Seed</span><span class="metric-value" id="mc-seed">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="mc_simulations">Simulations</span><span class="metric-value" id="mc-sims">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="mc_horizon">Horizon</span><span class="metric-value" id="mc-horizon">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="mc_method">Method</span><span class="metric-value" id="mc-method">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="mc_seed">Seed</span><span class="metric-value" id="mc-seed">--</span></div>
           </div>
         </div>
         <div class="panel">
-          <h2>Equity Bands (at Horizon)</h2>
+          <h2 data-i18n="mc_equity_bands">Equity Bands (at Horizon)</h2>
           <div class="summary-metrics">
-            <div class="ev-metric"><span class="metric-label">Median</span><span class="metric-value" id="mc-median">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Mean</span><span class="metric-value" id="mc-mean">--</span></div>
-            <div class="ev-metric"><span class="metric-label">P5 (downside)</span><span class="metric-value" id="mc-p5">--</span></div>
-            <div class="ev-metric"><span class="metric-label">P95 (upside)</span><span class="metric-value" id="mc-p95">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="mc_median">Median</span><span class="metric-value" id="mc-median">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="mc_mean">Mean</span><span class="metric-value" id="mc-mean">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="mc_p5">P5 (downside)</span><span class="metric-value" id="mc-p5">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="mc_p95">P95 (upside)</span><span class="metric-value" id="mc-p95">--</span></div>
           </div>
         </div>
         <div class="panel">
-          <h2>Risk Metrics</h2>
+          <h2 data-i18n="mc_risk_metrics">Risk Metrics</h2>
           <div class="summary-metrics">
-            <div class="ev-metric"><span class="metric-label">Prob of Loss</span><span class="metric-value" id="mc-prob-loss">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Prob DD Breach</span><span class="metric-value" id="mc-prob-dd">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Max DD (P95)</span><span class="metric-value" id="mc-dd-p95">--</span></div>
-            <div class="ev-metric"><span class="metric-label">CVaR (5%)</span><span class="metric-value" id="mc-cvar">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="mc_prob_loss">Prob of Loss</span><span class="metric-value" id="mc-prob-loss">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="mc_prob_dd">Prob DD Breach</span><span class="metric-value" id="mc-prob-dd">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="mc_dd_p95">Max DD (P95)</span><span class="metric-value" id="mc-dd-p95">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="mc_cvar">CVaR (5%)</span><span class="metric-value" id="mc-cvar">--</span></div>
           </div>
         </div>
       </div>
-
-      <!-- Stress Overlay Info -->
-      <div class="panel" id="mc-stress-panel" style="display:none">
-        <h2>Stress Overlay</h2>
-        <div class="summary-metrics" id="mc-stress-info"></div>
-      </div>
-
-      <!-- Sample Paths Visualization -->
+      <div class="panel" id="mc-stress-panel" style="display:none"><h2 data-i18n="mc_stress_overlay">Stress Overlay</h2><div class="summary-metrics" id="mc-stress-info"></div></div>
+      <div class="panel"><h2 data-i18n="mc_paths">Simulation Paths (sample)</h2><div id="mc-paths-chart" class="mc-paths-chart"></div></div>
       <div class="panel">
-        <h2>Simulation Paths (sample)</h2>
-        <div id="mc-paths-chart" class="mc-paths-chart"></div>
-      </div>
-
-      <!-- Percentile Table -->
-      <div class="panel">
-        <h2>Percentile Table</h2>
+        <h2 data-i18n="mc_pct_table">Percentile Table</h2>
         <div class="table-container">
           <table class="data-table" id="mc-pct-table">
-            <thead>
-              <tr><th>Percentile</th><th>Equity</th><th>Return</th></tr>
-            </thead>
+            <thead><tr><th data-i18n="table_percentile">Percentile</th><th data-i18n="table_equity">Equity</th><th data-i18n="table_return">Return</th></tr></thead>
             <tbody id="mc-pct-tbody"></tbody>
           </table>
         </div>
       </div>
-
-      <!-- Worst Path -->
       <div class="panel">
-        <h2>Worst Path Summary</h2>
+        <h2 data-i18n="mc_worst_path">Worst Path Summary</h2>
         <div class="summary-metrics">
-          <div class="ev-metric"><span class="metric-label">Worst Final Equity</span><span class="metric-value" id="mc-worst-eq">--</span></div>
-          <div class="ev-metric"><span class="metric-label">Worst Return</span><span class="metric-value" id="mc-worst-ret">--</span></div>
-          <div class="ev-metric"><span class="metric-label">Worst Max Drawdown</span><span class="metric-value" id="mc-worst-dd">--</span></div>
+          <div class="ev-metric"><span class="metric-label" data-i18n="mc_worst_eq">Worst Final Equity</span><span class="metric-value" id="mc-worst-eq">--</span></div>
+          <div class="ev-metric"><span class="metric-label" data-i18n="mc_worst_ret">Worst Return</span><span class="metric-value" id="mc-worst-ret">--</span></div>
+          <div class="ev-metric"><span class="metric-label" data-i18n="mc_worst_dd">Worst Max Drawdown</span><span class="metric-value" id="mc-worst-dd">--</span></div>
         </div>
       </div>
-
-      <!-- Full Distribution Histogram -->
-      <div class="panel">
-        <h2>Final Equity Distribution</h2>
-        <div id="mc-histogram" class="mc-histogram"></div>
-      </div>
+      <div class="panel"><h2 data-i18n="mc_histogram">Final Equity Distribution</h2><div id="mc-histogram" class="mc-histogram"></div></div>
     </section>
 
-    <!-- ===== Portfolio Optimizer ===== -->
+    <!-- ===== Optimizer ===== -->
     <section id="optimizer" class="tab-panel">
+      <div class="quickstart-banner" data-tab="optimizer">
+        <span class="quickstart-icon">i</span>
+        <span class="quickstart-text" data-i18n="quickstart_optimizer">Paste optimizer config with price series. Run to find optimal portfolio weights along the efficient frontier.</span>
+        <button class="quickstart-dismiss" onclick="this.parentElement.remove()" title="Dismiss">&times;</button>
+      </div>
       <div class="panel">
         <div class="panel-header">
-          <h2>Portfolio Optimizer / Efficient Frontier Lab</h2>
+          <h2 data-i18n="opt_title">Portfolio Optimizer / Efficient Frontier Lab</h2>
           <div class="btn-group">
-            <button id="btn-opt-load" class="btn btn-sm">Load Example</button>
-            <button id="btn-opt-run" class="btn btn-sm btn-primary">Run Optimizer</button>
-            <button id="btn-opt-copy" class="btn btn-sm">Copy JSON</button>
+            <button id="btn-opt-load" class="btn btn-sm" data-i18n="btn_opt_load">Load Example</button>
+            <button id="btn-opt-run" class="btn btn-sm btn-primary" data-i18n="btn_opt_run">Run Optimizer</button>
+            <button id="btn-opt-copy" class="btn btn-sm" data-i18n="btn_opt_copy">Copy JSON</button>
           </div>
         </div>
-        <textarea id="opt-editor" spellcheck="false" placeholder="Paste optimizer config JSON here (risk_free_rate, min_weight, max_weight, cash_weight, long_only, pinned_weights, current_weights, target_return, target_volatility, frontier_points, seed, search_iterations, price_series)..."></textarea>
+        <textarea id="opt-editor" spellcheck="false" data-i18n-placeholder="opt_placeholder" placeholder="Paste optimizer config JSON here..."></textarea>
       </div>
-
-      <!-- Return Stats -->
       <div class="panel">
-        <h2>Return Statistics</h2>
+        <h2 data-i18n="opt_returns">Return Statistics</h2>
         <div class="summary-metrics" id="opt-stats-summary"></div>
         <div class="table-container" style="margin-top:12px">
           <table class="data-table" id="opt-stats-table">
-            <thead>
-              <tr><th>Asset</th><th>Ann. Return</th><th>Ann. Volatility</th></tr>
-            </thead>
+            <thead><tr><th data-i18n="table_asset">Asset</th><th data-i18n="table_ann_ret">Ann. Return</th><th data-i18n="table_ann_vol">Ann. Volatility</th></tr></thead>
             <tbody id="opt-stats-tbody"></tbody>
           </table>
         </div>
       </div>
-
-      <!-- Correlation Matrix -->
       <div class="panel">
-        <h2>Correlation Matrix</h2>
+        <h2 data-i18n="opt_corr">Correlation Matrix</h2>
         <div class="table-container">
           <table class="data-table" id="opt-corr-table">
             <thead id="opt-corr-thead"></thead>
@@ -827,208 +688,144 @@
           </table>
         </div>
       </div>
-
-      <!-- Optimal Portfolios -->
+      <div class="panel"><h2 data-i18n="opt_portfolios">Optimal Portfolios</h2><div id="opt-portfolios"></div></div>
       <div class="panel">
-        <h2>Optimal Portfolios</h2>
-        <div id="opt-portfolios"></div>
-      </div>
+        <h2 data-i18n="opt_frontier">Efficient Frontier</h2>
+<!-- ... (optimizer continued, monte carlo continued, importer, journal, memo, examples, footer) ... -->
 
-      <!-- Efficient Frontier -->
-      <div class="panel">
-        <h2>Efficient Frontier</h2>
         <div id="opt-frontier-chart" class="mc-paths-chart"></div>
         <div class="table-container" style="margin-top:12px">
           <table class="data-table" id="opt-frontier-table">
-            <thead>
-              <tr><th>#</th><th>Return</th><th>Volatility</th><th>Sharpe</th></tr>
-            </thead>
+            <thead><tr><th>#</th><th data-i18n="table_return">Return</th><th data-i18n="table_ann_vol">Volatility</th><th data-i18n="table_sharpe">Sharpe</th></tr></thead>
             <tbody id="opt-frontier-tbody"></tbody>
           </table>
         </div>
       </div>
-
-      <!-- Warnings -->
-      <div class="panel" id="opt-warnings-panel" style="display:none">
-        <h2>Warnings</h2>
-        <div id="opt-warnings" class="blockers-list"></div>
-      </div>
+      <div class="panel" id="opt-warnings-panel" style="display:none"><h2 data-i18n="opt_warnings_title">Warnings</h2><div id="opt-warnings" class="blockers-list"></div></div>
     </section>
 
-    <!-- ===== Import & Build Scenario ===== -->
+    <!-- ===== Import & Build ===== -->
     <section id="importer" class="tab-panel">
-      <div class="panel">
-        <div class="panel-header">
-          <h2>Data Import &amp; Scenario Builder</h2>
-          <p class="section-desc">Paste CSV data for prices, signals, and benchmark. Build a backtest scenario client-side.</p>
-        </div>
+      <div class="quickstart-banner" data-tab="importer">
+        <span class="quickstart-icon">i</span>
+        <span class="quickstart-text" data-i18n="quickstart_importer">Paste CSV price, signal, and benchmark data. Build a complete backtest scenario with one click, then send to Backtest tab.</span>
+        <button class="quickstart-dismiss" onclick="this.parentElement.remove()" title="Dismiss">&times;</button>
       </div>
-
+      <div class="panel"><div class="panel-header"><h2 data-i18n="import_title">Data Import &amp; Scenario Builder</h2><p class="section-desc" data-i18n="import_desc">Paste CSV data for prices, signals, and benchmark. Build a backtest scenario client-side.</p></div></div>
       <div class="import-grid">
-        <!-- Prices -->
         <div class="panel">
-          <div class="panel-header">
-            <h2>Prices (CSV)</h2>
-            <div class="btn-group">
-              <button id="btn-import-prices-example" class="btn btn-sm">Load Example</button>
-            </div>
-          </div>
+          <div class="panel-header"><h2 data-i18n="import_prices">Prices (CSV)</h2><div class="btn-group"><button id="btn-import-prices-example" class="btn btn-sm" data-i18n="btn_import_prices_example">Load Example</button></div></div>
           <textarea id="import-prices" spellcheck="false" placeholder="date,open,high,low,close,volume&#10;2026-01-02,180,183,179,182,50000000&#10;2026-01-03,182,185,181,184,48000000"></textarea>
           <div id="import-prices-status" class="import-status"></div>
         </div>
-
-        <!-- Signals -->
         <div class="panel">
-          <div class="panel-header">
-            <h2>Signals (CSV)</h2>
-            <div class="btn-group">
-              <button id="btn-import-signals-example" class="btn btn-sm">Load Example</button>
-            </div>
-          </div>
+          <div class="panel-header"><h2 data-i18n="import_signals">Signals (CSV)</h2><div class="btn-group"><button id="btn-import-signals-example" class="btn btn-sm" data-i18n="btn_import_signals_example">Load Example</button></div></div>
           <textarea id="import-signals" spellcheck="false" placeholder="date,asset,action,quantity,reason,confidence,stop_price,target_price&#10;2026-01-02,AAPL,enter,100,Breakout,80,175,200"></textarea>
           <div id="import-signals-status" class="import-status"></div>
         </div>
-
-        <!-- Benchmark -->
         <div class="panel">
-          <div class="panel-header">
-            <h2>Benchmark (CSV, optional)</h2>
-            <div class="btn-group">
-              <button id="btn-import-bench-example" class="btn btn-sm">Load Example</button>
-            </div>
-          </div>
+          <div class="panel-header"><h2 data-i18n="import_benchmark">Benchmark (CSV, optional)</h2><div class="btn-group"><button id="btn-import-bench-example" class="btn btn-sm" data-i18n="btn_import_bench_example">Load Example</button></div></div>
           <textarea id="import-benchmark" spellcheck="false" placeholder="date,close&#10;2026-01-02,5010&#10;2026-01-03,5030"></textarea>
           <div id="import-bench-status" class="import-status"></div>
         </div>
       </div>
-
-      <!-- Config -->
       <div class="panel">
-        <div class="panel-header">
-          <h2>Scenario Config</h2>
+        <div class="panel-header"><h2 data-i18n="scenario_config">Scenario Config</h2>
           <div class="btn-group">
-            <button id="btn-build-scenario" class="btn btn-sm btn-primary">Build Scenario</button>
-            <button id="btn-send-to-backtest" class="btn btn-sm">Send to Backtest</button>
-            <button id="btn-copy-scenario" class="btn btn-sm">Copy JSON</button>
+            <button id="btn-build-scenario" class="btn btn-sm btn-primary" data-i18n="btn_build_scenario">Build Scenario</button>
+            <button id="btn-send-to-backtest" class="btn btn-sm" data-i18n="btn_send_to_backtest">Send to Backtest</button>
+            <button id="btn-copy-scenario" class="btn btn-sm" data-i18n="btn_copy_scenario">Copy JSON</button>
           </div>
         </div>
         <div class="config-row">
-          <label>Name <input id="import-scenario-name" type="text" value="Imported Scenario" class="config-input"></label>
-          <label>Capital <input id="import-capital" type="number" value="100000" class="config-input"></label>
-          <label>Commission <input id="import-commission" type="number" value="1" step="0.1" class="config-input"></label>
-          <label>Slippage (bps) <input id="import-slippage" type="number" value="5" step="0.5" class="config-input"></label>
-          <label>Max Position % <input id="import-max-pos" type="number" value="25" class="config-input"></label>
-          <label>Max Drawdown % <input id="import-max-dd" type="number" value="20" class="config-input"></label>
-          <label>Min Confidence <input id="import-min-conf" type="number" value="60" class="config-input"></label>
-          <label>Asset Name <input id="import-asset-name" type="text" value="IMPORTED" class="config-input"></label>
+          <label><span data-i18n="import_name">Name</span><input id="import-scenario-name" type="text" value="Imported Scenario" class="config-input"></label>
+          <label><span data-i18n="import_capital">Capital</span><input id="import-capital" type="number" value="100000" class="config-input"></label>
+          <label><span data-i18n="import_commission">Commission</span><input id="import-commission" type="number" value="1" step="0.1" class="config-input"></label>
+          <label><span data-i18n="import_slippage">Slippage (bps)</span><input id="import-slippage" type="number" value="5" step="0.5" class="config-input"></label>
+          <label><span data-i18n="import_max_pos">Max Position %</span><input id="import-max-pos" type="number" value="25" class="config-input"></label>
+          <label><span data-i18n="import_max_dd">Max Drawdown %</span><input id="import-max-dd" type="number" value="20" class="config-input"></label>
+          <label><span data-i18n="import_min_conf">Min Confidence</span><input id="import-min-conf" type="number" value="60" class="config-input"></label>
+          <label><span data-i18n="import_asset_name">Asset Name</span><input id="import-asset-name" type="text" value="IMPORTED" class="config-input"></label>
         </div>
       </div>
-
-      <!-- Output -->
       <div class="panel">
-        <div class="panel-header">
-          <h2>Scenario Output</h2>
-        </div>
-        <div id="import-scenario-output" class="output-area">
-          <p class="placeholder-text">Paste CSV data above and click "Build Scenario" to generate a backtest-ready JSON.</p>
-        </div>
+        <div class="panel-header"><h2 data-i18n="scenario_output">Scenario Output</h2></div>
+        <div id="import-scenario-output" class="output-area"><p class="placeholder-text" data-i18n="scenario_placeholder">Paste CSV data above and click "Build Scenario" to generate a backtest-ready JSON.</p></div>
       </div>
     </section>
 
     <!-- ===== Journal ===== -->
     <section id="journal" class="tab-panel">
+      <div class="quickstart-banner" data-tab="journal">
+        <span class="quickstart-icon">i</span>
+        <span class="quickstart-text" data-i18n="quickstart_journal">Paste your decision journal JSON. Analyze lifecycle status, score calibration, and performance attribution.</span>
+        <button class="quickstart-dismiss" onclick="this.parentElement.remove()" title="Dismiss">&times;</button>
+      </div>
       <div class="panel">
         <div class="panel-header">
-          <h2>Decision Journal Workstation</h2>
+          <h2 data-i18n="journal_title">Decision Journal Workstation</h2>
           <div class="btn-group">
-            <button id="btn-journal-load" class="btn btn-sm">Load Example</button>
-            <button id="btn-journal-analyze" class="btn btn-sm btn-primary">Analyze</button>
-            <button id="btn-journal-copy" class="btn btn-sm">Copy JSON</button>
+            <button id="btn-journal-load" class="btn btn-sm" data-i18n="btn_journal_load">Load Example</button>
+            <button id="btn-journal-analyze" class="btn btn-sm btn-primary" data-i18n="btn_journal_analyze">Analyze</button>
+            <button id="btn-journal-copy" class="btn btn-sm" data-i18n="btn_journal_copy">Copy JSON</button>
           </div>
         </div>
-        <textarea id="journal-editor" spellcheck="false" placeholder="Paste decision journal JSON here (decisions array with lifecycle, thesis, risk, outcome, attribution fields)..."></textarea>
+        <textarea id="journal-editor" spellcheck="false" data-i18n-placeholder="journal_placeholder" placeholder="Paste decision journal JSON here..."></textarea>
       </div>
-
-      <!-- Journal Summary -->
       <div class="journal-grid">
         <div class="panel" id="journal-summary-panel">
-          <h2>Journal Summary</h2>
+          <h2 data-i18n="journal_summary">Journal Summary</h2>
           <div class="summary-metrics" id="journal-summary-metrics">
-            <div class="ev-metric"><span class="metric-label">Total</span><span class="metric-value" id="jrn-total">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Active</span><span class="metric-value" id="jrn-active">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Exited</span><span class="metric-value" id="jrn-exited">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Reviewed</span><span class="metric-value" id="jrn-reviewed">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Invalidated</span><span class="metric-value" id="jrn-invalidated">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Planned</span><span class="metric-value" id="jrn-planned">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="jrn_total">Total</span><span class="metric-value" id="jrn-total">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="jrn_active">Active</span><span class="metric-value" id="jrn-active">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="jrn_exited">Exited</span><span class="metric-value" id="jrn-exited">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="jrn_reviewed">Reviewed</span><span class="metric-value" id="jrn-reviewed">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="jrn_invalidated">Invalidated</span><span class="metric-value" id="jrn-invalidated">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="jrn_planned">Planned</span><span class="metric-value" id="jrn-planned">--</span></div>
           </div>
         </div>
-
-        <!-- Calibration Summary -->
         <div class="panel" id="journal-calibration-panel">
-          <h2>Score Calibration</h2>
+          <h2 data-i18n="calibration_title">Score Calibration</h2>
           <div class="summary-metrics">
-            <div class="ev-metric"><span class="metric-label">Win Rate</span><span class="metric-value" id="jrn-win-rate">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Avg Return</span><span class="metric-value" id="jrn-avg-return">--</span></div>
-            <div class="ev-metric"><span class="metric-label">Avg R-Multiple</span><span class="metric-value" id="jrn-avg-r">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="jrn_win_rate">Win Rate</span><span class="metric-value" id="jrn-win-rate">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="jrn_avg_ret">Avg Return</span><span class="metric-value" id="jrn-avg-return">--</span></div>
+            <div class="ev-metric"><span class="metric-label" data-i18n="jrn_avg_r">Avg R-Multiple</span><span class="metric-value" id="jrn-avg-r">--</span></div>
           </div>
           <div class="table-container" style="margin-top:12px">
             <table class="data-table" id="calibration-table">
-              <thead>
-                <tr><th>Score Bucket</th><th>Count</th><th>Win Rate</th><th>Avg Return</th><th>Avg R</th><th>Process Err</th></tr>
-              </thead>
+              <thead><tr>
+                <th data-i18n="table_score_bucket">Score Bucket</th><th data-i18n="table_count">Count</th><th data-i18n="bt_win_rate">Win Rate</th>
+                <th data-i18n="jrn_avg_ret">Avg Return</th><th data-i18n="jrn_avg_r">Avg R</th><th data-i18n="table_process_err">Process Err</th>
+              </tr></thead>
               <tbody id="calibration-tbody"></tbody>
             </table>
           </div>
         </div>
       </div>
-
-      <!-- Lifecycle Alerts -->
-      <div class="panel" id="journal-alerts-panel">
-        <h2>Lifecycle Alerts</h2>
-        <div id="journal-alerts" class="blockers-list"></div>
-      </div>
-
-      <!-- Decisions Table -->
+      <div class="panel" id="journal-alerts-panel"><h2 data-i18n="lifecycle_alerts">Lifecycle Alerts</h2><div id="journal-alerts" class="blockers-list"></div></div>
       <div class="panel">
-        <h2>Decisions</h2>
+        <h2 data-i18n="decisions_title">Decisions</h2>
         <div class="table-container">
           <table class="data-table" id="decisions-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Instrument</th>
-                <th>Status</th>
-                <th>Direction</th>
-                <th>Entry</th>
-                <th>Exit</th>
-                <th>Return</th>
-                <th>R-Mult</th>
-                <th>Score</th>
-                <th>Tags</th>
-              </tr>
-            </thead>
+            <thead><tr>
+              <th data-i18n="table_id">ID</th><th data-i18n="table_instrument">Instrument</th><th data-i18n="table_status">Status</th>
+              <th data-i18n="table_direction_jrn">Direction</th><th data-i18n="table_entry_jrn">Entry</th><th data-i18n="table_exit_jrn">Exit</th>
+              <th data-i18n="table_return_jrn">Return</th><th data-i18n="table_rmult_jrn">R-Mult</th>
+              <th data-i18n="table_score_jrn">Score</th><th data-i18n="table_tags">Tags</th>
+            </tr></thead>
             <tbody id="decisions-tbody"></tbody>
           </table>
         </div>
       </div>
-
-      <!-- Attribution Table -->
       <div class="panel" id="journal-attribution-panel">
-        <h2>Performance Attribution</h2>
+        <h2 data-i18n="attribution_title">Performance Attribution</h2>
         <div class="table-container">
           <table class="data-table" id="attribution-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Code</th>
-                <th>Total</th>
-                <th>Market</th>
-                <th>Sector</th>
-                <th>Idiosyncratic</th>
-                <th>Sizing</th>
-                <th>Residual</th>
-              </tr>
-            </thead>
+            <thead><tr>
+              <th data-i18n="table_id">ID</th><th data-i18n="table_code">Code</th><th data-i18n="table_total">Total</th>
+              <th data-i18n="table_market">Market</th><th data-i18n="table_sector">Sector</th>
+              <th data-i18n="table_idio">Idiosyncratic</th><th data-i18n="table_sizing">Sizing</th><th data-i18n="table_residual">Residual</th>
+            </tr></thead>
             <tbody id="attribution-tbody"></tbody>
           </table>
         </div>
@@ -1037,35 +834,39 @@
 
     <!-- ===== Decision Memo ===== -->
     <section id="decision-memo" class="tab-panel">
+      <div class="quickstart-banner" data-tab="decision-memo">
+        <span class="quickstart-icon">i</span>
+        <span class="quickstart-text" data-i18n="quickstart_memo">After setting scorecard values, generate a complete Markdown decision memo for review and archival.</span>
+        <button class="quickstart-dismiss" onclick="this.parentElement.remove()" title="Dismiss">&times;</button>
+      </div>
       <div class="panel">
         <div class="panel-header">
-          <h2>Decision Memo</h2>
+          <h2 data-i18n="memo_title">Decision Memo</h2>
           <div class="btn-group">
-            <button id="btn-generate-memo" class="btn btn-primary">Generate from Scorecards</button>
-            <button id="btn-copy-memo" class="btn btn-sm">Copy</button>
+            <button id="btn-generate-memo" class="btn btn-primary" data-i18n="btn_generate_memo">Generate from Scorecards</button>
+            <button id="btn-copy-memo" class="btn btn-sm" data-i18n="btn_copy_memo">Copy</button>
           </div>
         </div>
-        <div id="memo-output" class="output-area memo-area">
-          <p class="placeholder-text">Set scorecard values and scenario inputs, then click "Generate from Scorecards".</p>
-        </div>
+        <div id="memo-output" class="output-area memo-area"><p class="placeholder-text" data-i18n="memo_placeholder">Set scorecard values and scenario inputs, then click "Generate from Scorecards".</p></div>
       </div>
     </section>
 
     <!-- ===== Examples ===== -->
     <section id="examples" class="tab-panel">
+      <div class="quickstart-banner" data-tab="examples">
+        <span class="quickstart-icon">i</span>
+        <span class="quickstart-text" data-i18n="quickstart_examples">Click any example card to load it. Use ETF Signal or Professional Analysis to see the framework in action.</span>
+        <button class="quickstart-dismiss" onclick="this.parentElement.remove()" title="Dismiss">&times;</button>
+      </div>
       <div class="panel">
-        <h2>Example Gallery</h2>
-        <p class="section-desc">Pre-loaded examples demonstrating different signal types. Click to load into Signal Lab.</p>
-        <div class="example-grid" id="example-gallery">
-          <!-- Populated by JS -->
-        </div>
+        <h2 data-i18n="examples_title">Example Gallery</h2>
+        <p class="section-desc" data-i18n="examples_desc">Pre-loaded examples demonstrating different signal types. Click to load into Signal Lab.</p>
+        <div class="example-grid" id="example-gallery"></div>
       </div>
     </section>
   </main>
 
-  <footer>
-    <p>invest-signal-kit &mdash; research tooling, not financial advice. No API keys, no brokerage integration, no automatic trading.</p>
-  </footer>
+  <footer><p data-i18n="footer_text">invest-signal-kit — research tooling, not financial advice. No API keys, no brokerage integration, no automatic trading.</p></footer>
 
   <script src="app.js"></script>
 </body>

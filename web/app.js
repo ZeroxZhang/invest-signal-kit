@@ -2990,24 +2990,44 @@ document.addEventListener('DOMContentLoaded', () => {
   // Import & Scenario Builder
   // =====================================================================
 
-  const IMPORT_PRICES_EXAMPLE = `date,open,high,low,close,volume
-2026-01-02,180,183,179,182,50000000
-2026-01-03,182,185,181,184,48000000
-2026-01-06,184,188,183,187,52000000
-2026-01-07,187,190,186,189,47000000
-2026-01-08,189,192,188,191,51000000
-2026-01-09,191,193,190,192,46000000
-2026-01-12,192,195,191,194,49000000
-2026-01-13,194,196,193,195,45000000
-2026-01-14,195,197,194,196,44000000
-2026-01-15,196,198,195,197,47000000`;
+  const IMPORT_PRICES_EXAMPLE = `date,asset,open,high,low,close,volume
+2026-01-02,AAPL,180,183,179,182,50000000
+2026-01-03,AAPL,182,185,181,184,48000000
+2026-01-06,AAPL,184,188,183,187,52000000
+2026-01-07,AAPL,187,190,186,189,47000000
+2026-01-08,AAPL,189,192,188,191,51000000
+2026-01-09,AAPL,191,193,190,192,46000000
+2026-01-12,AAPL,192,195,191,194,49000000
+2026-01-13,AAPL,194,196,193,195,45000000
+2026-01-14,AAPL,195,197,194,196,44000000
+2026-01-15,AAPL,196,198,195,197,47000000
+2026-01-02,MSFT,365,368,363,366,30000000
+2026-01-03,MSFT,366,370,365,369,28000000
+2026-01-06,MSFT,369,375,368,373,32000000
+2026-01-07,MSFT,373,378,372,376,29000000
+2026-01-08,MSFT,376,382,375,379,31000000
+2026-01-09,MSFT,379,384,378,382,27000000
+2026-01-12,MSFT,382,388,381,386,33000000
+2026-01-13,MSFT,386,390,384,388,26000000
+2026-01-14,MSFT,388,392,387,390,28000000
+2026-01-15,MSFT,390,394,389,392,30000000
+2026-01-02,TSLA,245,250,243,248,40000000
+2026-01-03,TSLA,248,253,246,251,38000000
+2026-01-06,TSLA,251,256,249,254,42000000
+2026-01-07,TSLA,254,260,253,258,39000000
+2026-01-08,TSLA,258,264,257,262,41000000
+2026-01-09,TSLA,262,267,260,265,37000000
+2026-01-12,TSLA,265,270,263,268,43000000
+2026-01-13,TSLA,268,272,266,270,36000000
+2026-01-14,TSLA,270,274,268,272,38000000
+2026-01-15,TSLA,272,276,270,274,40000000`;
 
-  const IMPORT_SIGNALS_EXAMPLE = `date,asset,action,quantity,reason,confidence,stop_price,target_price,time_stop_days
-2026-01-02,AAPL,enter,100,Breakout above resistance,80,175,200,15
-2026-01-06,MSFT,enter,50,Earnings momentum,75,360,400,20
-2026-01-07,TSLA,enter,,,35,240,280,
-2026-01-08,MSFT,add,25,Adding on breakout,70,,,
-2026-01-09,AAPL,exit,,,0,,,`;
+  const IMPORT_SIGNALS_EXAMPLE = `date,asset,action,quantity,price,reason,confidence,stop_price,target_price,time_stop_days
+2026-01-02,AAPL,enter,100,,Breakout above resistance with volume confirmation,80,175,200,15
+2026-01-06,MSFT,enter,50,,Earnings momentum play with sector tailwind,75,360,400,20
+2026-01-07,TSLA,enter,,,Low confidence speculative entry,35,240,280,
+2026-01-08,MSFT,add,25,,Adding on confirmed breakout,70,,,
+2026-01-09,AAPL,exit,,,Taking profits ahead of macro event,0,,,`;
 
   const IMPORT_BENCH_EXAMPLE = `date,close
 2026-01-02,5010
@@ -3047,16 +3067,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (errors.length) return { data: null, errors };
     if (!headers.includes('date') || !headers.includes('close'))
       return { data: null, errors: ['Missing required columns: date, close'] };
+    const hasAsset = headers.includes('asset');
     const data = [];
     const seen = {};
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       if (!r.date) { errors.push(`Row ${i+2}: date is empty`); continue; }
-      if (seen[r.date]) { errors.push(`Row ${i+2}: duplicate date '${r.date}'`); continue; }
-      seen[r.date] = i+2;
+      const key = hasAsset ? (r.asset || '') + '|' + r.date : r.date;
+      if (seen[key]) { errors.push(`Row ${i+2}: duplicate date '${r.date}'` + (hasAsset && r.asset ? ` for asset '${r.asset}'` : '')); continue; }
+      seen[key] = i+2;
       const close = parseCsvFloat(r.close);
       if (close === null) { errors.push(`Row ${i+2}: cannot parse close '${r.close}'`); continue; }
       const entry = { date: r.date, close };
+      if (hasAsset && r.asset) entry.asset = r.asset;
       for (const col of ['open','high','low','volume']) {
         if (headers.includes(col)) {
           const v = parseCsvFloat(r[col]);

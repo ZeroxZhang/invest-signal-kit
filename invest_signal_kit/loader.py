@@ -154,3 +154,25 @@ def load_json_file(path: Union[str, Path]) -> Tuple[Union[Signal, MacroContext],
         "Wrap with {{\"signal\": ...}} or {{\"macro_context\": ...}}, "
         "or include action_level/evidence for signals or risk_appetite/key_variables for macro."
     )
+
+
+def normalize_signal_json(data: dict) -> tuple[dict, dict]:
+    """Extract (signal_dict, framework_dict) from any supported JSON form.
+
+    Supports three layouts:
+      A) {"signal": {...}, "framework": {...}}   -- top-level siblings
+      B) {"signal": { ..., "framework": {...}}}  -- framework nested inside signal
+      C) raw signal dict with optional "framework"
+
+    When both top-level and nested framework exist, top-level wins.
+    """
+    if "signal" in data:
+        signal_dict = data["signal"]
+        # Prefer top-level framework; fall back to nested
+        top_fw = data.get("framework")
+        nested_fw = signal_dict.get("framework", {})
+        fw_dict = top_fw if top_fw is not None else nested_fw
+    else:
+        signal_dict = data
+        fw_dict = data.get("framework", {})
+    return signal_dict, fw_dict

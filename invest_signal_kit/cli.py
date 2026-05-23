@@ -123,6 +123,7 @@ def _cmd_render(obj, kind: str, output: str | None) -> int:
 def _cmd_framework(file_path: str, output: str | None) -> int:
     """Run professional framework analysis."""
     from .framework import run_full_analysis
+    from .loader import normalize_signal_json
 
     text = Path(file_path).read_text(encoding="utf-8")
     try:
@@ -131,11 +132,10 @@ def _cmd_framework(file_path: str, output: str | None) -> int:
         print(f"Error: Invalid JSON: {exc}", file=sys.stderr)
         return 1
 
-    # Unwrap if needed
-    if "signal" in data:
-        data = data["signal"]
+    signal_data, fw_data = normalize_signal_json(data)
+    signal_data["framework"] = fw_data
 
-    result = run_full_analysis(data)
+    result = run_full_analysis(signal_data)
     out = json.dumps(result, indent=2, ensure_ascii=False)
 
     if output:
@@ -166,8 +166,9 @@ def _cmd_memo(file_path: str, output: str | None) -> int:
         return 1
 
     # Unwrap if needed
-    signal_data = data.get("signal", data)
-    fw = signal_data.get("framework", {})
+    from .loader import normalize_signal_json
+
+    signal_data, fw = normalize_signal_json(data)
 
     # Build memo input
     tq_raw = fw.get("thesis_quality", {})
@@ -175,6 +176,7 @@ def _cmd_memo(file_path: str, output: str | None) -> int:
     re_raw = fw.get("risk_execution", {})
     ev_raw = fw.get("scenario", {})
     ps_raw = fw.get("position_sizing", {})
+    target_return_pct = ps_raw.pop("target_return_pct", ev_raw.get("bull_return_pct", 10))
 
     inst = signal_data.get("instrument", {})
 
@@ -190,7 +192,7 @@ def _cmd_memo(file_path: str, output: str | None) -> int:
         risk=RiskExecutionInput(**re_raw) if re_raw else None,
         scenario=ScenarioInput(**ev_raw) if ev_raw else None,
         sizing=PositionSizingInput(**ps_raw) if ps_raw else None,
-        target_return_pct=ps_raw.get("target_return_pct", ev_raw.get("bull_return_pct", 10)),
+        target_return_pct=target_return_pct,
     )
 
     md = generate_decision_memo(memo_inp)

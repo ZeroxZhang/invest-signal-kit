@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -1022,6 +1024,121 @@ class TestProfessionalSignalExample(unittest.TestCase):
         self.assertIn("thesis_quality", data["framework"])
         self.assertIn("scenario", data["framework"])
         self.assertIn("position_sizing", data["framework"])
+
+
+# =========================================================================
+# Normalization & Regression Tests
+# =========================================================================
+
+class TestNormalizeSignalJson(unittest.TestCase):
+    """Test normalize_signal_json handles all supported layouts."""
+
+    def test_form_a_top_level_siblings(self):
+        from invest_signal_kit.loader import normalize_signal_json
+        data = {"signal": {"id": "x"}, "framework": {"thesis_quality": {"evidence_strength": 8}}}
+        sig, fw = normalize_signal_json(data)
+        self.assertEqual(sig["id"], "x")
+        self.assertIn("thesis_quality", fw)
+
+    def test_form_b_nested_framework(self):
+        from invest_signal_kit.loader import normalize_signal_json
+        data = {"signal": {"id": "y", "framework": {"thesis_quality": {"evidence_strength": 7}}}}
+        sig, fw = normalize_signal_json(data)
+        self.assertEqual(sig["id"], "y")
+        self.assertEqual(fw["thesis_quality"]["evidence_strength"], 7)
+
+    def test_form_c_raw_signal(self):
+        from invest_signal_kit.loader import normalize_signal_json
+        data = {"id": "z", "framework": {"thesis_quality": {}}}
+        sig, fw = normalize_signal_json(data)
+        self.assertEqual(sig["id"], "z")
+        self.assertIn("thesis_quality", fw)
+
+    def test_top_level_framework_wins_over_nested(self):
+        from invest_signal_kit.loader import normalize_signal_json
+        data = {
+            "signal": {"id": "z", "framework": {"thesis_quality": {"evidence_strength": 3}}},
+            "framework": {"thesis_quality": {"evidence_strength": 9}},
+        }
+        _, fw = normalize_signal_json(data)
+        self.assertEqual(fw["thesis_quality"]["evidence_strength"], 9)
+
+    def test_no_framework_returns_empty(self):
+        from invest_signal_kit.loader import normalize_signal_json
+        data = {"signal": {"id": "w"}}
+        _, fw = normalize_signal_json(data)
+        self.assertEqual(fw, {})
+
+    def test_professional_signal_json_form_a(self):
+        from invest_signal_kit.loader import normalize_signal_json
+        data = json.loads((EXAMPLES / "professional_signal.json").read_text())
+        sig, fw = normalize_signal_json(data)
+        self.assertEqual(sig["id"], "2026-05-20-semiconductor-etf-001")
+        self.assertIn("thesis_quality", fw)
+        self.assertIn("scenario", fw)
+        self.assertIn("position_sizing", fw)
+
+
+class TestProfessionalSignalRegression(unittest.TestCase):
+    """Regression: professional_signal.json must produce high scores and ACTION level."""
+
+    @classmethod
+    def setUpClass(cls):
+        from invest_signal_kit.framework import run_full_analysis
+        from invest_signal_kit.loader import normalize_signal_json
+        data = json.loads((EXAMPLES / "professional_signal.json").read_text())
+        sig, fw = normalize_signal_json(data)
+        sig["framework"] = fw
+        cls.result = run_full_analysis(sig)
+
+    def test_thesis_quality_above_default(self):
+        tq = self.result["thesis_quality"]["total"]
+        self.assertGreater(tq, 60, f"thesis_quality={tq}, expected >60 (above default ~50)")
+
+    def test_market_confirmation_above_default(self):
+        mc = self.result["market_confirmation"]["total"]
+        self.assertGreater(mc, 55, f"market_confirmation={mc}, expected >55")
+
+    def test_risk_execution_above_default(self):
+        re = self.result["risk_execution"]["total"]
+        self.assertGreater(re, 55, f"risk_execution={re}, expected >55")
+
+    def test_expected_value_positive(self):
+        self.assertEqual(self.result["expected_value"]["quality"], "positive_ev")
+
+    def test_decision_readiness_action(self):
+        level = self.result["decision_readiness"]["recommended_level"]
+        self.assertEqual(level, "action", f"recommended_level={level}, expected 'action'")
+
+    def test_cli_framework_uses_top_level_framework(self):
+        """CLI framework command must pick up top-level framework sibling."""
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["framework", str(EXAMPLES / "professional_signal.json")])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        data = json.loads(captured.getvalue())
+        self.assertEqual(data["decision_readiness"]["recommended_level"], "action")
+        self.assertGreater(data["thesis_quality"]["total"], 60)
+
+    def test_cli_memo_uses_top_level_framework(self):
+        """CLI memo command must pick up top-level framework sibling."""
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["memo", str(EXAMPLES / "professional_signal.json")])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        memo = captured.getvalue()
+        self.assertIn("ACTION", memo)
+        self.assertIn("Thesis Quality", memo)
 
 
 if __name__ == "__main__":

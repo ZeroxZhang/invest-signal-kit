@@ -1,0 +1,53 @@
+{
+  "macro_context": {
+    "date": "2026-05-20",
+    "source_task": "Morning macro briefing",
+    "risk_appetite": "rising",
+    "market_regime": "balanced",
+    "summary": "Global risk appetite improving on US-China trade dialogue progress. Domestic liquidity remains ample with PBOC maintaining accommodative stance. Tech and new energy themes leading.",
+    "key_variables": [
+      {
+        "name": "US-China trade dialogue",
+        "change": "Senior officials meeting scheduled for late May, market interpreting as positive signal",
+        "confidence": 70,
+        "data_quality": "verified",
+        "possible_affected_themes": ["export-oriented manufacturing", "semiconductor", "tech hardware"],
+        "source": "Official government statements",
+        "date": "2026-05-19",
+        "url": ""
+      },
+      {
+        "name": "PBOC liquidity stance",
+        "change": "MLF rate unchanged, net injection 50B CNY this week",
+        "confidence": 90,
+        "data_quality": "verified",
+        "possible_affected_themes": ["broad market", "real estate", "financials"],
+        "source": "PBOC open market operations report",
+        "date": "2026-05-20",
+        "url": ""
+      },
+      {
+        "name": "US Fed rate expectations",
+        "change": "Market pricing 1 cut by September, data-dependent",
+        "confidence": 55,
+        "data_quality": "estimated",
+        "possible_affected_themes": ["USD-sensitive assets", "gold", "emerging markets"],
+        "source": "CME FedWatch tool",
+        "date": "2026-05-19",
+        "url": ""
+      }
+    ],
+    "notes_for_tasks": [
+      {
+        "theme": "Semiconductor",
+        "background": "Trade dialogue positive for chip equipment imports; domestic substitution narrative still strong",
+        "what_to_verify": "Actual tariff reduction scope, equipment import approval timeline"
+      },
+      {
+        "theme": "New Energy",
+        "background": "Solid-state battery announcements creating sector momentum",
+        "what_to_verify": "Production milestone confirmations in Q3, subsidy policy updates"
+      }
+    ]
+  }
+}

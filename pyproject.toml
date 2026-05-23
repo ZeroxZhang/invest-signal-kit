@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "invest-signal-kit"
+version = "0.1.0"
+description = "A stdlib-only toolkit for turning investment research into structured, auditable signals."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [{ name = "ZeroxZhang", email = "22983136+ZeroxZhang@users.noreply.github.com" }]
+keywords = ["investment", "signals", "validation", "research", "toolkit"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial",
+]
+
+[project.scripts]
+invest-signal-kit = "invest_signal_kit.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ZeroxZhang/invest-signal-kit"
+Repository = "https://github.com/ZeroxZhang/invest-signal-kit"
+
+[tool.setuptools.packages.find]
+include = ["invest_signal_kit*"]

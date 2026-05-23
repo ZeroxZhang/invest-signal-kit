@@ -1,0 +1,33 @@
+{
+  "signal": {
+    "id": "2026-05-20-bad-signal-001",
+    "title": "Invalid action signal example",
+    "summary": "This signal intentionally fails validation: missing trigger, risk fields, D-only evidence, and low confidence.",
+    "source_task": "Test data",
+    "signal_type": "ETF",
+    "instrument": {
+      "code": "999999",
+      "name": "Fictional ETF",
+      "asset_type": "ETF"
+    },
+    "evidence": [
+      {
+        "source": "Anonymous social media post",
+        "date": "2026-05-20",
+        "quote_or_data": "Someone on Weibo said this will 10x",
+        "url": "",
+        "evidence_level": "D"
+      }
+    ],
+    "direction": "bullish",
+    "impact_horizon": "1 week",
+    "confidence": 30,
+    "data_quality": "unverified",
+    "action_level": "action",
+    "suggested_action": "Buy immediately",
+    "trigger_condition": "",
+    "invalidation_condition": "",
+    "max_risk": "",
+    "risk_note": ""
+  }
+}

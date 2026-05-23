@@ -1,0 +1,47 @@
+{
+  "signal": {
+    "id": "2026-05-20-semiconductor-etf-001",
+    "title": "Semiconductor ETF breakout watch",
+    "summary": "Semiconductor sector showing strength with policy tailwinds and volume expansion. ETF 512480 approaching key resistance with institutional inflow confirmation.",
+    "source_task": "ETF pre-market analysis",
+    "signal_type": "ETF",
+    "instrument": {
+      "code": "512480",
+      "name": "Semiconductor ETF",
+      "asset_type": "ETF"
+    },
+    "evidence": [
+      {
+        "source": "Shanghai Stock Exchange fund flow data",
+        "date": "2026-05-19",
+        "quote_or_data": "Net inflow 120M CNY over 3 days",
+        "url": "",
+        "evidence_level": "A"
+      },
+      {
+        "source": "National Integrated Circuit Industry Investment Fund announcement",
+        "date": "2026-05-18",
+        "quote_or_data": "Phase III fund allocation details released",
+        "url": "",
+        "evidence_level": "A"
+      },
+      {
+        "source": "Financial media sector analysis",
+        "date": "2026-05-19",
+        "quote_or_data": "Semiconductor index outperformed CSI 300 by 2.3% this week",
+        "url": "",
+        "evidence_level": "B"
+      }
+    ],
+    "direction": "bullish",
+    "impact_horizon": "1-3 months",
+    "confidence": 75,
+    "data_quality": "verified",
+    "action_level": "candidate",
+    "suggested_action": "Watch for volume confirmation above 1.2x 20-day average",
+    "trigger_condition": "Price breaks above 1.05 with volume > 1.2x 20-day avg and holds for 2 consecutive days",
+    "invalidation_condition": "Price falls below 0.98 or sector index breaks below 20-day MA",
+    "max_risk": "8% drawdown from entry to stop-loss",
+    "risk_note": "Semiconductor is cyclical; global demand recovery timing uncertain. Single-sector concentration risk."
+  }
+}

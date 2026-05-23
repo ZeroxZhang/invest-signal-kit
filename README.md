@@ -119,6 +119,7 @@ invest-signal-kit serve --port 8765
 | `review` | Review decisions for process adherence and errors | `python3 -m invest_signal_kit review examples/decision_journal.json` |
 | `calibrate` | Calibrate decision scores against realized outcomes | `python3 -m invest_signal_kit calibrate examples/decision_journal.json` |
 | `rebalance` | Generate rebalance/trade plan from holdings, targets, and candidates | `python3 -m invest_signal_kit rebalance examples/rebalance_plan.json` |
+| `backtest` | Run backtest / signal replay from a scenario JSON | `python3 -m invest_signal_kit backtest examples/backtest_scenario.json` |
 | `serve` | Launch the local browser workstation | `python3 -m invest_signal_kit serve --port 8765` |
 
 ## Practical Workflow
@@ -344,7 +345,31 @@ The rebalance engine:
 
 Or use the **Rebalance** tab in the web UI to load, edit, and generate trade plans interactively.
 
-### 8. Batch Signal Analysis
+### 8. Backtest / Signal Replay
+
+Run a deterministic backtest from a JSON scenario with price series, signal events, and risk rules:
+
+```bash
+# JSON output (default)
+python3 -m invest_signal_kit backtest examples/backtest_scenario.json
+
+# Markdown report
+python3 -m invest_signal_kit backtest examples/backtest_scenario.json --format markdown
+
+# Save to file
+python3 -m invest_signal_kit backtest examples/backtest_scenario.json -o report.md
+```
+
+The backtest engine:
+- Simulates enter, add, trim, exit, stop, target, time-stop, skip, and blocked events
+- Tracks cash, positions, equity curve, trades, event log, costs, drawdown, turnover
+- Computes total return, max drawdown, win rate, average R-multiple, alpha vs benchmark
+- Enforces risk rules: max position %, max drawdown halt, min confidence gates
+- Estimates transaction costs (commission + slippage)
+
+Or use the **Backtest** tab in the web UI to load, edit, and run backtest scenarios interactively.
+
+### 9. Batch Signal Analysis
 
 Analyze multiple signals at once:
 
@@ -535,6 +560,7 @@ All formulas are documented in [docs/framework.md](docs/framework.md). All input
 | `examples/portfolio_workflow.json` | portfolio | Multi-asset portfolio with policy, candidates, and stress scenarios |
 | `examples/decision_journal.json` | journal | Multi-decision journal with lifecycle, calibration, and attribution |
 | `examples/rebalance_plan.json` | rebalance | Rebalance plan with targets, candidates, constraints, and cost assumptions |
+| `examples/backtest_scenario.json` | backtest | Multi-asset backtest with signals, benchmark, costs, and risk rules |
 
 ## Validation Rules
 

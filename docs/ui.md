@@ -86,6 +86,17 @@ Trade plan generator with:
 - Execution plan grouped by phase (immediate, wait-for-trigger, reduce-risk-first, blocked)
 - Side-by-side current vs projected position tables
 
+### Backtest
+
+Signal replay lab with:
+- Backtest scenario editor (paste or load example)
+- Summary metrics: performance (initial/final/return/drawdown), trade stats (count/win rate/avg return/avg R), costs & benchmark
+- ASCII equity curve visualization with drawdown and benchmark overlay
+- Equity curve table with cash, positions, total, drawdown, benchmark per date
+- Trade table with entry/exit dates, prices, P&L, return, R-multiple, holding days, exit reason
+- Event log showing all executed events with values and costs
+- Blocked/skipped events with clear block reasons (confidence gates, insufficient cash, position limits)
+
 ### Decision Memo
 
 Generate a comprehensive Markdown decision memo that combines:
@@ -111,8 +122,9 @@ Pre-loaded examples demonstrating different signal types and workflows:
 6. **Portfolio Workflow**: multi-asset portfolio with policy, candidates, and stress scenarios
 7. **Decision Journal**: multi-decision journal with lifecycle, calibration, and attribution
 8. **Rebalance Trade Plan**: portfolio rebalance with targets, candidates, constraints, and cost assumptions
+9. **Backtest / Signal Replay**: multi-asset backtest with signals, benchmark, costs, and risk rules
 
-Click any example card to load it into the appropriate tab. Portfolio, journal, and rebalance examples load into their dedicated tabs with auto-analysis.
+Click any example card to load it into the appropriate tab. Portfolio, journal, rebalance, and backtest examples load into their dedicated tabs with auto-analysis.
 
 ## Design Philosophy
 

@@ -2802,5 +2802,542 @@ class TestRebalanceGuardsAndWarnings(unittest.TestCase):
         self.assertTrue(len(result.execution_phases) > 0)
 
 
+# =========================================================================
+# Backtest / Signal Replay Lab tests
+# =========================================================================
+
+class TestBacktestLoader(unittest.TestCase):
+    """Test backtest scenario loading."""
+
+    def test_load_price_points(self):
+        from invest_signal_kit.backtest import load_price_points
+        data = [{"date": "2026-01-02", "open": 100, "high": 105, "low": 99, "close": 103, "volume": 1000}]
+        pts = load_price_points(data)
+        self.assertEqual(len(pts), 1)
+        self.assertEqual(pts[0].date, "2026-01-02")
+        self.assertEqual(pts[0].close, 103)
+
+    def test_load_signal_event(self):
+        from invest_signal_kit.backtest import load_signal_event
+        data = {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 100,
+                "confidence": 80, "stop_price": 175, "target_price": 200}
+        evt = load_signal_event(data)
+        self.assertEqual(evt.asset, "AAPL")
+        self.assertEqual(evt.action, "enter")
+        self.assertEqual(evt.quantity, 100)
+        self.assertEqual(evt.confidence, 80)
+
+    def test_load_backtest_scenario(self):
+        from invest_signal_kit.backtest import load_backtest_scenario
+        data = {
+            "initial_capital": 50000,
+            "price_series": {"AAPL": [{"date": "2026-01-02", "close": 180}]},
+            "signal_events": [{"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 50}],
+            "costs": {"commission_per_trade": 2, "slippage_bps": 10},
+            "risk_rules": {"max_position_pct": 30, "max_drawdown_pct": 15, "min_confidence": 50},
+        }
+        sc = load_backtest_scenario(data)
+        self.assertEqual(sc.initial_capital, 50000)
+        self.assertIn("AAPL", sc.price_series)
+        self.assertEqual(len(sc.signal_events), 1)
+        self.assertEqual(sc.costs.commission_per_trade, 2)
+        self.assertEqual(sc.risk_rules.max_position_pct, 30)
+
+    def test_load_defaults(self):
+        from invest_signal_kit.backtest import load_backtest_scenario
+        sc = load_backtest_scenario({})
+        self.assertEqual(sc.initial_capital, 100000)
+        self.assertEqual(sc.costs.slippage_bps, 5)
+        self.assertEqual(sc.risk_rules.min_confidence, 60)
+
+
+class TestBacktestExecution(unittest.TestCase):
+    """Test backtest simulation execution."""
+
+    def _simple_scenario(self):
+        from invest_signal_kit.backtest import load_backtest_scenario
+        return load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {
+                "AAPL": [
+                    {"date": "2026-01-02", "close": 100},
+                    {"date": "2026-01-03", "close": 110},
+                    {"date": "2026-01-06", "close": 105},
+                ],
+            },
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 100, "confidence": 80},
+                {"date": "2026-01-06", "asset": "AAPL", "action": "exit"},
+            ],
+        })
+
+    def test_basic_execution(self):
+        from invest_signal_kit.backtest import run_backtest
+        result = run_backtest(self._simple_scenario())
+        self.assertEqual(result.total_trades, 1)
+        self.assertEqual(result.trades[0].asset, "AAPL")
+        self.assertEqual(result.trades[0].entry_price, 100)
+        self.assertEqual(result.trades[0].exit_price, 105)
+
+    def test_equity_curve_populated(self):
+        from invest_signal_kit.backtest import run_backtest
+        result = run_backtest(self._simple_scenario())
+        self.assertTrue(len(result.equity_curve) > 0)
+        self.assertEqual(result.equity_curve[0].date, "2026-01-02")
+
+    def test_event_log_populated(self):
+        from invest_signal_kit.backtest import run_backtest
+        result = run_backtest(self._simple_scenario())
+        actions = [e.action for e in result.event_log]
+        self.assertIn("enter", actions)
+        self.assertIn("exit", actions)
+
+    def test_final_equity_positive(self):
+        from invest_signal_kit.backtest import run_backtest
+        result = run_backtest(self._simple_scenario())
+        self.assertGreater(result.final_equity, 0)
+
+    def test_pnl_correct(self):
+        from invest_signal_kit.backtest import run_backtest
+        result = run_backtest(self._simple_scenario())
+        # Bought 100 at 100, sold at 105, minus costs
+        expected_pnl = (105 - 100) * 100
+        self.assertAlmostEqual(result.trades[0].pnl, expected_pnl, places=0)
+
+
+class TestBacktestCosts(unittest.TestCase):
+    """Test cost calculations."""
+
+    def test_commission_applied(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        sc = load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {"AAPL": [{"date": "2026-01-02", "close": 100}, {"date": "2026-01-03", "close": 100}]},
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 100, "confidence": 80},
+                {"date": "2026-01-03", "asset": "AAPL", "action": "exit"},
+            ],
+            "costs": {"commission_per_trade": 10, "slippage_bps": 0},
+        })
+        result = run_backtest(sc)
+        self.assertGreater(result.total_fees, 0)
+        self.assertGreater(result.total_costs, 0)
+
+    def test_slippage_applied(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        sc = load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {"AAPL": [{"date": "2026-01-02", "close": 100}, {"date": "2026-01-03", "close": 100}]},
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 100, "confidence": 80},
+                {"date": "2026-01-03", "asset": "AAPL", "action": "exit"},
+            ],
+            "costs": {"commission_per_trade": 0, "slippage_bps": 50},
+        })
+        result = run_backtest(sc)
+        self.assertGreater(result.total_slippage, 0)
+
+
+class TestBacktestStopTargetTimeStop(unittest.TestCase):
+    """Test stop, target, and time-stop exits."""
+
+    def test_stop_loss(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        sc = load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {"AAPL": [
+                {"date": "2026-01-02", "close": 100},
+                {"date": "2026-01-03", "close": 90},
+            ]},
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 100,
+                 "confidence": 80, "stop_price": 95},
+            ],
+        })
+        result = run_backtest(sc)
+        self.assertEqual(result.total_trades, 1)
+        self.assertEqual(result.trades[0].exit_reason, "stop_loss")
+
+    def test_target_reached(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        sc = load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {"AAPL": [
+                {"date": "2026-01-02", "close": 100},
+                {"date": "2026-01-03", "close": 120},
+            ]},
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 100,
+                 "confidence": 80, "target_price": 115},
+            ],
+        })
+        result = run_backtest(sc)
+        self.assertEqual(result.total_trades, 1)
+        self.assertEqual(result.trades[0].exit_reason, "target_reached")
+
+    def test_time_stop(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        sc = load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {"AAPL": [
+                {"date": "2026-01-02", "close": 100},
+                {"date": "2026-01-03", "close": 101},
+                {"date": "2026-01-06", "close": 102},
+                {"date": "2026-01-07", "close": 103},
+            ]},
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 100,
+                 "confidence": 80, "time_stop_days": 3},
+            ],
+        })
+        result = run_backtest(sc)
+        self.assertEqual(result.total_trades, 1)
+        self.assertEqual(result.trades[0].exit_reason, "time_stop")
+
+
+class TestBacktestBlockedEvents(unittest.TestCase):
+    """Test blocked/skipped events."""
+
+    def test_low_confidence_blocked(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        sc = load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {"TSLA": [{"date": "2026-01-02", "close": 250}]},
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "TSLA", "action": "enter", "quantity": 100, "confidence": 35},
+            ],
+            "risk_rules": {"min_confidence": 60},
+        })
+        result = run_backtest(sc)
+        self.assertEqual(result.total_trades, 0)
+        self.assertTrue(len(result.blocked_events) > 0)
+        self.assertIn("Confidence", result.blocked_events[0].block_reason)
+
+    def test_insufficient_cash_blocked(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        sc = load_backtest_scenario({
+            "initial_capital": 50000,
+            "price_series": {
+                "AAPL": [{"date": "2026-01-02", "close": 100}],
+                "MSFT": [{"date": "2026-01-02", "close": 100}],
+            },
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 400, "confidence": 80},
+                {"date": "2026-01-02", "asset": "MSFT", "action": "enter", "quantity": 200, "confidence": 80},
+            ],
+            "risk_rules": {"max_position_pct": 100},
+        })
+        result = run_backtest(sc)
+        # Second enter is blocked due to insufficient cash
+        cash_blocks = [b for b in result.blocked_events if "Insufficient cash" in b.block_reason]
+        self.assertTrue(len(cash_blocks) > 0)
+        self.assertEqual(cash_blocks[0].asset, "MSFT")
+
+    def test_skip_logged(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        sc = load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {"AAPL": [{"date": "2026-01-02", "close": 100}]},
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "skip", "reason": "Not ready"},
+            ],
+        })
+        result = run_backtest(sc)
+        self.assertEqual(result.total_trades, 0)
+        skip_events = [e for e in result.event_log if e.action == "skip"]
+        self.assertEqual(len(skip_events), 1)
+
+    def test_add_without_position_blocked(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        sc = load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {"AAPL": [{"date": "2026-01-02", "close": 100}]},
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "add", "quantity": 50},
+            ],
+        })
+        result = run_backtest(sc)
+        self.assertTrue(len(result.blocked_events) > 0)
+        self.assertIn("No existing position", result.blocked_events[0].block_reason)
+
+
+class TestBacktestMetrics(unittest.TestCase):
+    """Test computed metrics."""
+
+    def test_total_return(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        sc = load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {"AAPL": [
+                {"date": "2026-01-02", "close": 100},
+                {"date": "2026-01-03", "close": 110},
+            ]},
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 100, "confidence": 80},
+                {"date": "2026-01-03", "asset": "AAPL", "action": "exit"},
+            ],
+        })
+        result = run_backtest(sc)
+        self.assertGreater(result.total_return_pct, 0)
+
+    def test_max_drawdown(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        sc = load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {"AAPL": [
+                {"date": "2026-01-02", "close": 100},
+                {"date": "2026-01-03", "close": 80},
+            ]},
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 100, "confidence": 80},
+            ],
+        })
+        result = run_backtest(sc)
+        self.assertGreater(result.max_drawdown_pct, 0)
+
+    def test_win_rate(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        sc = load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {
+                "AAPL": [{"date": "2026-01-02", "close": 100}, {"date": "2026-01-03", "close": 110}],
+                "MSFT": [{"date": "2026-01-02", "close": 200}, {"date": "2026-01-03", "close": 190}],
+            },
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 50, "confidence": 80},
+                {"date": "2026-01-02", "asset": "MSFT", "action": "enter", "quantity": 25, "confidence": 80},
+                {"date": "2026-01-03", "asset": "AAPL", "action": "exit"},
+                {"date": "2026-01-03", "asset": "MSFT", "action": "exit"},
+            ],
+        })
+        result = run_backtest(sc)
+        self.assertEqual(result.total_trades, 2)
+        self.assertEqual(result.winning_trades, 1)
+        self.assertEqual(result.losing_trades, 1)
+        self.assertEqual(result.win_rate, 50.0)
+
+    def test_benchmark_comparison(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        sc = load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {"AAPL": [
+                {"date": "2026-01-02", "close": 100},
+                {"date": "2026-01-03", "close": 110},
+            ]},
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 100, "confidence": 80},
+                {"date": "2026-01-03", "asset": "AAPL", "action": "exit"},
+            ],
+            "benchmark": [
+                {"date": "2026-01-02", "close": 5000},
+                {"date": "2026-01-03", "close": 5050},
+            ],
+        })
+        result = run_backtest(sc)
+        self.assertGreater(result.benchmark_return_pct, 0)
+        self.assertNotEqual(result.alpha_vs_benchmark, 0)
+
+    def test_r_multiple(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        sc = load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {"AAPL": [
+                {"date": "2026-01-02", "close": 100},
+                {"date": "2026-01-03", "close": 110},
+            ]},
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 100,
+                 "confidence": 80, "stop_price": 95, "target_price": 115},
+                {"date": "2026-01-03", "asset": "AAPL", "action": "exit"},
+            ],
+        })
+        result = run_backtest(sc)
+        # risk_per_share = |100 - 95| = 5
+        # pnl = (110 - 100) * 100 = 1000
+        # r_multiple = 1000 / (5 * 100) = 2.0
+        self.assertAlmostEqual(result.trades[0].r_multiple, 2.0, places=1)
+
+
+class TestBacktestMarkdown(unittest.TestCase):
+    """Test markdown rendering."""
+
+    def test_render_contains_sections(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest, render_backtest_markdown
+        sc = load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {"AAPL": [
+                {"date": "2026-01-02", "close": 100},
+                {"date": "2026-01-03", "close": 110},
+            ]},
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 100, "confidence": 80},
+                {"date": "2026-01-03", "asset": "AAPL", "action": "exit"},
+            ],
+        })
+        result = run_backtest(sc)
+        md = render_backtest_markdown(result)
+        self.assertIn("# Backtest / Signal Replay Report", md)
+        self.assertIn("## Summary", md)
+        self.assertIn("## Trade Statistics", md)
+        self.assertIn("## Costs", md)
+        self.assertIn("## Trades", md)
+        self.assertIn("## Equity Curve", md)
+        self.assertIn("## Event Log", md)
+        self.assertIn("Not investment advice", md)
+
+    def test_render_blocked_events(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest, render_backtest_markdown
+        sc = load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {"TSLA": [{"date": "2026-01-02", "close": 250}]},
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "TSLA", "action": "enter", "quantity": 100, "confidence": 35},
+            ],
+        })
+        result = run_backtest(sc)
+        md = render_backtest_markdown(result)
+        self.assertIn("Blocked / Skipped Events", md)
+        self.assertIn("BLOCKED", md)
+
+
+class TestBacktestCLI(unittest.TestCase):
+    """Test backtest CLI command."""
+
+    def test_backtest_json_output(self):
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "-m", "invest_signal_kit", "backtest",
+             str(EXAMPLES / "backtest_scenario.json")],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0)
+        data = json.loads(result.stdout)
+        self.assertIn("trades", data)
+        self.assertIn("equity_curve", data)
+        self.assertIn("total_return_pct", data)
+
+    def test_backtest_markdown_output(self):
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "-m", "invest_signal_kit", "backtest",
+             str(EXAMPLES / "backtest_scenario.json"), "--format", "markdown"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Backtest / Signal Replay Report", result.stdout)
+        self.assertIn("Trade Statistics", result.stdout)
+        self.assertIn("Equity Curve", result.stdout)
+
+    def test_backtest_missing_file(self):
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "-m", "invest_signal_kit", "backtest", "nonexistent.json"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Error", result.stderr)
+
+    def test_backtest_invalid_json(self):
+        import subprocess
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write("not json")
+            f.flush()
+            result = subprocess.run(
+                [sys.executable, "-m", "invest_signal_kit", "backtest", f.name],
+                capture_output=True, text=True,
+            )
+            os.unlink(f.name)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Error", result.stderr)
+
+
+class TestBacktestExampleValidity(unittest.TestCase):
+    """Test that the backtest example produces valid output."""
+
+    def test_example_loads_and_produces_trades(self):
+        from invest_signal_kit.backtest import run_backtest_from_dict
+        with open(EXAMPLES / "backtest_scenario.json") as f:
+            data = json.load(f)
+        result = run_backtest_from_dict(data)
+        self.assertIn("trades", result)
+        self.assertTrue(len(result["trades"]) > 0)
+
+    def test_example_has_enter_and_exit(self):
+        from invest_signal_kit.backtest import run_backtest_from_dict
+        with open(EXAMPLES / "backtest_scenario.json") as f:
+            data = json.load(f)
+        result = run_backtest_from_dict(data)
+        actions = set()
+        for e in result["event_log"]:
+            actions.add(e["action"])
+        self.assertIn("enter", actions)
+        self.assertIn("exit", actions)
+
+    def test_example_has_blocked_event(self):
+        from invest_signal_kit.backtest import run_backtest_from_dict
+        with open(EXAMPLES / "backtest_scenario.json") as f:
+            data = json.load(f)
+        result = run_backtest_from_dict(data)
+        self.assertTrue(len(result["blocked_events"]) > 0)
+
+    def test_example_has_equity_curve(self):
+        from invest_signal_kit.backtest import run_backtest_from_dict
+        with open(EXAMPLES / "backtest_scenario.json") as f:
+            data = json.load(f)
+        result = run_backtest_from_dict(data)
+        self.assertTrue(len(result["equity_curve"]) > 0)
+
+    def test_example_has_benchmark(self):
+        from invest_signal_kit.backtest import run_backtest_from_dict
+        with open(EXAMPLES / "backtest_scenario.json") as f:
+            data = json.load(f)
+        result = run_backtest_from_dict(data)
+        self.assertNotEqual(result["benchmark_return_pct"], 0)
+
+
+class TestBacktestMultiAsset(unittest.TestCase):
+    """Test multi-asset backtest scenarios."""
+
+    def test_multiple_positions(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        sc = load_backtest_scenario({
+            "initial_capital": 200000,
+            "price_series": {
+                "AAPL": [{"date": "2026-01-02", "close": 100}, {"date": "2026-01-03", "close": 110}],
+                "MSFT": [{"date": "2026-01-02", "close": 200}, {"date": "2026-01-03", "close": 210}],
+            },
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 50, "confidence": 80},
+                {"date": "2026-01-02", "asset": "MSFT", "action": "enter", "quantity": 25, "confidence": 80},
+                {"date": "2026-01-03", "asset": "AAPL", "action": "exit"},
+                {"date": "2026-01-03", "asset": "MSFT", "action": "exit"},
+            ],
+        })
+        result = run_backtest(sc)
+        self.assertEqual(result.total_trades, 2)
+        assets = {t.asset for t in result.trades}
+        self.assertEqual(assets, {"AAPL", "MSFT"})
+
+    def test_add_position(self):
+        from invest_signal_kit.backtest import load_backtest_scenario, run_backtest
+        sc = load_backtest_scenario({
+            "initial_capital": 100000,
+            "price_series": {"AAPL": [
+                {"date": "2026-01-02", "close": 100},
+                {"date": "2026-01-03", "close": 105},
+                {"date": "2026-01-06", "close": 110},
+            ]},
+            "signal_events": [
+                {"date": "2026-01-02", "asset": "AAPL", "action": "enter", "quantity": 50, "confidence": 80},
+                {"date": "2026-01-03", "asset": "AAPL", "action": "add", "quantity": 25},
+                {"date": "2026-01-06", "asset": "AAPL", "action": "exit"},
+            ],
+        })
+        result = run_backtest(sc)
+        self.assertEqual(result.total_trades, 1)
+        # After add, should have 75 shares
+        self.assertEqual(result.trades[0].shares, 75)
+
+
 if __name__ == "__main__":
     unittest.main()

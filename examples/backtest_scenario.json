@@ -1,0 +1,111 @@
+{
+  "initial_capital": 100000,
+  "price_series": {
+    "AAPL": [
+      {"date": "2026-01-02", "open": 180, "high": 183, "low": 179, "close": 182, "volume": 50000000},
+      {"date": "2026-01-03", "open": 182, "high": 185, "low": 181, "close": 184, "volume": 48000000},
+      {"date": "2026-01-06", "open": 184, "high": 188, "low": 183, "close": 187, "volume": 52000000},
+      {"date": "2026-01-07", "open": 187, "high": 190, "low": 186, "close": 189, "volume": 47000000},
+      {"date": "2026-01-08", "open": 189, "high": 192, "low": 188, "close": 191, "volume": 51000000},
+      {"date": "2026-01-09", "open": 191, "high": 193, "low": 190, "close": 192, "volume": 46000000},
+      {"date": "2026-01-12", "open": 192, "high": 195, "low": 191, "close": 194, "volume": 49000000},
+      {"date": "2026-01-13", "open": 194, "high": 196, "low": 193, "close": 195, "volume": 45000000},
+      {"date": "2026-01-14", "open": 195, "high": 197, "low": 194, "close": 196, "volume": 44000000},
+      {"date": "2026-01-15", "open": 196, "high": 198, "low": 195, "close": 197, "volume": 47000000}
+    ],
+    "MSFT": [
+      {"date": "2026-01-02", "open": 370, "high": 374, "low": 368, "close": 372, "volume": 30000000},
+      {"date": "2026-01-03", "open": 372, "high": 376, "low": 371, "close": 375, "volume": 28000000},
+      {"date": "2026-01-06", "open": 375, "high": 378, "low": 373, "close": 377, "volume": 31000000},
+      {"date": "2026-01-07", "open": 377, "high": 380, "low": 375, "close": 378, "volume": 29000000},
+      {"date": "2026-01-08", "open": 378, "high": 382, "low": 376, "close": 380, "volume": 32000000},
+      {"date": "2026-01-09", "open": 380, "high": 383, "low": 378, "close": 381, "volume": 27000000},
+      {"date": "2026-01-12", "open": 381, "high": 384, "low": 379, "close": 382, "volume": 30000000},
+      {"date": "2026-01-13", "open": 382, "high": 385, "low": 380, "close": 383, "volume": 26000000},
+      {"date": "2026-01-14", "open": 383, "high": 386, "low": 381, "close": 384, "volume": 28000000},
+      {"date": "2026-01-15", "open": 384, "high": 387, "low": 382, "close": 385, "volume": 29000000}
+    ],
+    "TSLA": [
+      {"date": "2026-01-02", "open": 250, "high": 255, "low": 248, "close": 253, "volume": 80000000},
+      {"date": "2026-01-03", "open": 253, "high": 258, "low": 251, "close": 256, "volume": 75000000},
+      {"date": "2026-01-06", "open": 256, "high": 260, "low": 254, "close": 258, "volume": 78000000},
+      {"date": "2026-01-07", "open": 258, "high": 262, "low": 256, "close": 260, "volume": 72000000},
+      {"date": "2026-01-08", "open": 260, "high": 264, "low": 258, "close": 262, "volume": 81000000},
+      {"date": "2026-01-09", "open": 262, "high": 265, "low": 260, "close": 263, "volume": 70000000},
+      {"date": "2026-01-12", "open": 263, "high": 266, "low": 261, "close": 264, "volume": 76000000},
+      {"date": "2026-01-13", "open": 264, "high": 267, "low": 262, "close": 265, "volume": 69000000},
+      {"date": "2026-01-14", "open": 265, "high": 268, "low": 263, "close": 266, "volume": 73000000},
+      {"date": "2026-01-15", "open": 266, "high": 269, "low": 264, "close": 267, "volume": 71000000}
+    ]
+  },
+  "signal_events": [
+    {
+      "date": "2026-01-02",
+      "asset": "AAPL",
+      "action": "enter",
+      "quantity": 100,
+      "reason": "Breakout above resistance with volume confirmation",
+      "confidence": 80,
+      "stop_price": 175,
+      "target_price": 200,
+      "time_stop_days": 15
+    },
+    {
+      "date": "2026-01-06",
+      "asset": "MSFT",
+      "action": "enter",
+      "quantity": 50,
+      "reason": "Earnings momentum play with sector tailwind",
+      "confidence": 75,
+      "stop_price": 360,
+      "target_price": 400,
+      "time_stop_days": 20
+    },
+    {
+      "date": "2026-01-09",
+      "asset": "AAPL",
+      "action": "exit",
+      "reason": "Taking profits ahead of macro event",
+      "confidence": 0
+    },
+    {
+      "date": "2026-01-07",
+      "asset": "TSLA",
+      "action": "enter",
+      "quantity": 0,
+      "reason": "Low confidence speculative entry — blocked",
+      "confidence": 35,
+      "stop_price": 240,
+      "target_price": 280
+    },
+    {
+      "date": "2026-01-08",
+      "asset": "MSFT",
+      "action": "add",
+      "quantity": 25,
+      "reason": "Adding on confirmed breakout",
+      "confidence": 70
+    }
+  ],
+  "benchmark": [
+    {"date": "2026-01-02", "open": 5000, "high": 5020, "low": 4980, "close": 5010, "volume": 3000000000},
+    {"date": "2026-01-03", "open": 5010, "high": 5040, "low": 5000, "close": 5030, "volume": 2900000000},
+    {"date": "2026-01-06", "open": 5030, "high": 5060, "low": 5020, "close": 5050, "volume": 3100000000},
+    {"date": "2026-01-07", "open": 5050, "high": 5080, "low": 5040, "close": 5070, "volume": 2800000000},
+    {"date": "2026-01-08", "open": 5070, "high": 5100, "low": 5060, "close": 5090, "volume": 3200000000},
+    {"date": "2026-01-09", "open": 5090, "high": 5110, "low": 5080, "close": 5100, "volume": 2700000000},
+    {"date": "2026-01-12", "open": 5100, "high": 5120, "low": 5090, "close": 5110, "volume": 3000000000},
+    {"date": "2026-01-13", "open": 5110, "high": 5130, "low": 5100, "close": 5120, "volume": 2600000000},
+    {"date": "2026-01-14", "open": 5120, "high": 5140, "low": 5110, "close": 5130, "volume": 2800000000},
+    {"date": "2026-01-15", "open": 5130, "high": 5150, "low": 5120, "close": 5140, "volume": 2900000000}
+  ],
+  "costs": {
+    "commission_per_trade": 1.0,
+    "slippage_bps": 5
+  },
+  "risk_rules": {
+    "max_position_pct": 30,
+    "max_drawdown_pct": 25,
+    "min_confidence": 60
+  }
+}

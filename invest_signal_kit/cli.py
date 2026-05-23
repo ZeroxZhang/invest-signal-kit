@@ -86,6 +86,13 @@ def main(argv=None) -> int:
     p_rebal.add_argument("--format", choices=["json", "markdown", "md"], default="json",
                          help="Output format (default: json)")
 
+    # --- backtest ---
+    p_bt = sub.add_parser("backtest", help="Run backtest / signal replay from a scenario JSON")
+    p_bt.add_argument("file", help="Path to backtest scenario JSON file")
+    p_bt.add_argument("--output", "-o", help="Output file path (default: stdout)")
+    p_bt.add_argument("--format", choices=["json", "markdown", "md"], default="json",
+                      help="Output format (default: json)")
+
     # --- serve ---
     p_serve = sub.add_parser("serve", help="Serve the web UI locally")
     p_serve.add_argument("--port", type=int, default=8765, help="Port to listen on (default: 8765)")
@@ -119,6 +126,10 @@ def main(argv=None) -> int:
     if args.command == "rebalance":
         return _cmd_rebalance(args.file, getattr(args, "output", None),
                               getattr(args, "format", "json"))
+
+    if args.command == "backtest":
+        return _cmd_backtest(args.file, getattr(args, "output", None),
+                             getattr(args, "format", "json"))
 
     try:
         obj, kind = load_json_file(args.file)
@@ -614,6 +625,47 @@ def _cmd_rebalance(file_path: str, output: str | None, fmt: str) -> int:
 
     if fmt in ("markdown", "md"):
         out = render_rebalance_markdown(result)
+    else:
+        out = json.dumps(_result_to_dict(result), indent=2, ensure_ascii=False)
+
+    if output:
+        Path(output).write_text(out, encoding="utf-8")
+        print(f"Written to {output}")
+    else:
+        print(out)
+    return 0
+
+
+def _cmd_backtest(file_path: str, output: str | None, fmt: str) -> int:
+    """Run backtest / signal replay."""
+    from .backtest import (
+        load_backtest_scenario,
+        run_backtest,
+        render_backtest_markdown,
+        _result_to_dict,
+    )
+
+    try:
+        text = Path(file_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        print(f"Error: Invalid JSON: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        scenario = load_backtest_scenario(data)
+    except (ValueError, KeyError, TypeError) as exc:
+        print(f"Error loading backtest scenario: {exc}", file=sys.stderr)
+        return 1
+
+    result = run_backtest(scenario)
+
+    if fmt in ("markdown", "md"):
+        out = render_backtest_markdown(result)
     else:
         out = json.dumps(_result_to_dict(result), indent=2, ensure_ascii=False)
 

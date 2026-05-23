@@ -87,3 +87,19 @@ Macro context can be wrapped:
 ```
 
 For production use, prefer complete fields matching the example files.
+
+## Backtest
+
+Run a backtest from a scenario JSON:
+
+```bash
+python3 -m invest_signal_kit backtest examples/backtest_scenario.json
+```
+
+Markdown report:
+
+```bash
+python3 -m invest_signal_kit backtest examples/backtest_scenario.json --format markdown
+```
+
+The scenario JSON requires `initial_capital`, `price_series` (keyed by asset code), and `signal_events`. Optional fields: `benchmark`, `costs`, `risk_rules`.

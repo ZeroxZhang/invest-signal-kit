@@ -931,3 +931,38 @@ footer p {
   .rebal-summary-grid { grid-template-columns: 1fr; }
   .rebal-positions-grid { grid-template-columns: 1fr; }
 }
+
+/* Backtest Tab */
+#bt-editor {
+  width: 100%;
+  height: 160px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 12px;
+  resize: vertical;
+  tab-size: 2;
+}
+
+.bt-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+.bt-equity-chart {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+@media (max-width: 900px) {
+  .bt-summary-grid { grid-template-columns: 1fr; }
+}

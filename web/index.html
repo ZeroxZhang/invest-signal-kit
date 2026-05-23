@@ -18,6 +18,7 @@
       <button class="nav-btn" data-tab="scenario-sizing">Scenario &amp; Sizing</button>
       <button class="nav-btn" data-tab="portfolio">Portfolio</button>
       <button class="nav-btn" data-tab="rebalance">Rebalance</button>
+      <button class="nav-btn" data-tab="backtest">Backtest</button>
       <button class="nav-btn" data-tab="journal">Journal</button>
       <button class="nav-btn" data-tab="decision-memo">Decision Memo</button>
       <button class="nav-btn" data-tab="examples">Examples</button>
@@ -609,6 +610,91 @@
             </table>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- ===== Backtest ===== -->
+    <section id="backtest" class="tab-panel">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Backtest / Signal Replay Lab</h2>
+          <div class="btn-group">
+            <button id="btn-bt-load" class="btn btn-sm">Load Example</button>
+            <button id="btn-bt-run" class="btn btn-sm btn-primary">Run Backtest</button>
+            <button id="btn-bt-copy" class="btn btn-sm">Copy JSON</button>
+          </div>
+        </div>
+        <textarea id="bt-editor" spellcheck="false" placeholder="Paste backtest scenario JSON here (initial_capital, price_series, signal_events, benchmark, costs, risk_rules)..."></textarea>
+      </div>
+
+      <!-- Summary Metrics -->
+      <div class="bt-summary-grid">
+        <div class="panel">
+          <h2>Performance</h2>
+          <div class="summary-metrics">
+            <div class="ev-metric"><span class="metric-label">Initial Capital</span><span class="metric-value" id="bt-initial">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Final Equity</span><span class="metric-value" id="bt-final">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Total Return</span><span class="metric-value" id="bt-return">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Max Drawdown</span><span class="metric-value" id="bt-dd">--</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Trade Stats</h2>
+          <div class="summary-metrics">
+            <div class="ev-metric"><span class="metric-label">Total Trades</span><span class="metric-value" id="bt-trades">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Win Rate</span><span class="metric-value" id="bt-winrate">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Avg Return</span><span class="metric-value" id="bt-avg-ret">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Avg R-Multiple</span><span class="metric-value" id="bt-avg-r">--</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Costs &amp; Benchmark</h2>
+          <div class="summary-metrics">
+            <div class="ev-metric"><span class="metric-label">Total Costs</span><span class="metric-value" id="bt-costs">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Turnover</span><span class="metric-value" id="bt-turnover">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Benchmark Return</span><span class="metric-value" id="bt-bench-ret">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Alpha</span><span class="metric-value" id="bt-alpha">--</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Equity Curve Chart (ASCII bar) -->
+      <div class="panel">
+        <h2>Equity Curve</h2>
+        <div id="bt-equity-chart" class="bt-equity-chart"></div>
+        <div class="table-container" style="margin-top:12px">
+          <table class="data-table" id="bt-equity-table">
+            <thead>
+              <tr><th>Date</th><th>Cash</th><th>Positions</th><th>Total</th><th>Drawdown</th><th>Benchmark</th></tr>
+            </thead>
+            <tbody id="bt-equity-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Trades -->
+      <div class="panel">
+        <h2>Trades</h2>
+        <div class="table-container">
+          <table class="data-table" id="bt-trades-table">
+            <thead>
+              <tr><th>Asset</th><th>Entry</th><th>Exit</th><th>Shares</th><th>Entry Px</th><th>Exit Px</th><th>P&L</th><th>Return</th><th>R-Mult</th><th>Days</th><th>Exit Reason</th></tr>
+            </thead>
+            <tbody id="bt-trades-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Event Log -->
+      <div class="panel">
+        <h2>Event Log</h2>
+        <div id="bt-event-log" class="notes-list"></div>
+      </div>
+
+      <!-- Blocked Events -->
+      <div class="panel" id="bt-blocked-panel">
+        <h2>Blocked / Skipped Events</h2>
+        <div id="bt-blocked-list" class="blockers-list"></div>
       </div>
     </section>
 

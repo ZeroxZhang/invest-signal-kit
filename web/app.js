@@ -1224,6 +1224,414 @@ function runRebalanceAnalysis() {
 }
 
 // ---------------------------------------------------------------------------
+// Backtest / Signal Replay Lab (JS Mirror)
+// ---------------------------------------------------------------------------
+
+function backtestEstimateCost(value, costs) {
+  const commission = costs.commission_per_trade || 0;
+  const slippage = Math.abs(value) * ((costs.slippage_bps || 5) / 10000);
+  return { commission: round2(commission), slippage: round2(slippage), total: round2(commission + slippage) };
+}
+
+function backtestRun(scenario) {
+  const initialCapital = +(scenario.initial_capital || 100000);
+  const priceSeries = scenario.price_series || {};
+  const signalEvents = scenario.signal_events || [];
+  const benchmark = scenario.benchmark || [];
+  const costs = { commission_per_trade: +(scenario.costs?.commission_per_trade || 0), slippage_bps: +(scenario.costs?.slippage_bps || 5) };
+  const riskRules = { max_position_pct: +(scenario.risk_rules?.max_position_pct || 25), max_drawdown_pct: +(scenario.risk_rules?.max_drawdown_pct || 20), min_confidence: +(scenario.risk_rules?.min_confidence || 60) };
+
+  // Build close maps
+  const closeMaps = {};
+  for (const [asset, bars] of Object.entries(priceSeries)) {
+    closeMaps[asset] = {};
+    for (const b of bars) closeMaps[asset][b.date] = +b.close;
+  }
+  const benchMap = {};
+  for (const b of benchmark) benchMap[b.date] = +b.close;
+
+  // All dates
+  const dateSet = new Set();
+  for (const bars of Object.values(priceSeries)) for (const b of bars) dateSet.add(b.date);
+  const allDates = [...dateSet].sort();
+
+  // Events by date
+  const eventsByDate = {};
+  for (const evt of signalEvents) {
+    if (!eventsByDate[evt.date]) eventsByDate[evt.date] = [];
+    eventsByDate[evt.date].push(evt);
+  }
+
+  // State
+  let cash = initialCapital;
+  const positions = {};
+  const trades = [];
+  const eventLog = [];
+  const blockedEvents = [];
+  const equityCurve = [];
+  let peakEquity = initialCapital;
+  let maxDD = 0;
+  let totalFees = 0;
+  let totalSlippage = 0;
+  let totalTurnover = 0;
+  let halted = false;
+
+  // Initial benchmark
+  let initialBench = null;
+  if (benchmark.length) {
+    for (const d of allDates) {
+      if (benchMap[d] !== undefined) { initialBench = benchMap[d]; break; }
+    }
+  }
+
+  function pct(v, t) { return t ? (v / t * 100) : 0; }
+  function daysBetween(d1, d2) {
+    try { return Math.round((new Date(d2) - new Date(d1)) / 86400000); } catch { return 0; }
+  }
+
+  for (const date of allDates) {
+    // Position value
+    let posValue = 0;
+    for (const [asset, pos] of Object.entries(positions)) {
+      const px = closeMaps[asset]?.[date] ?? pos.entry_price;
+      posValue += pos.shares * px;
+    }
+    let totalEquity = cash + posValue;
+    if (totalEquity > peakEquity) peakEquity = totalEquity;
+    const dd = pct(peakEquity - totalEquity, peakEquity);
+    if (dd > maxDD) maxDD = dd;
+
+    const benchVal = initialBench && benchMap[date] !== undefined
+      ? round2(initialCapital * (benchMap[date] / initialBench)) : null;
+
+    equityCurve.push({ date, cash: round2(cash), positions_value: round2(posValue), total_equity: round2(totalEquity), drawdown_pct: round2(dd), benchmark_value: benchVal });
+
+    if (halted) continue;
+    if (dd >= riskRules.max_drawdown_pct) {
+      halted = true;
+      eventLog.push({ date, action: 'halt', reason: `Max drawdown ${dd.toFixed(1)}% reached limit ${riskRules.max_drawdown_pct}%.`, equity_after: round2(totalEquity) });
+    }
+    if (halted) continue;
+
+    // Check stops/targets/time-stops
+    const toClose = [];
+    for (const [asset, pos] of Object.entries(positions)) {
+      const px = closeMaps[asset]?.[date];
+      if (px === undefined) continue;
+      if (pos.stop_price > 0 && px <= pos.stop_price) { toClose.push([asset, px, 'stop']); continue; }
+      if (pos.target_price > 0 && px >= pos.target_price) { toClose.push([asset, px, 'target']); continue; }
+      if (pos.time_stop_days > 0 && daysBetween(pos.entry_date, date) >= pos.time_stop_days) {
+        toClose.push([asset, px, 'time_stop']); continue;
+      }
+    }
+    for (const [asset, px, reasonKind] of toClose) {
+      const pos = positions[asset];
+      const tradeValue = pos.shares * px;
+      const est = backtestEstimateCost(tradeValue, costs);
+      cash += tradeValue - est.total;
+      totalFees += est.commission; totalSlippage += est.slippage; totalTurnover += Math.abs(tradeValue);
+      const riskPerShare = pos.stop_price > 0 ? Math.abs(pos.entry_price - pos.stop_price) : pos.entry_price;
+      const pnl = (px - pos.entry_price) * pos.shares;
+      const retPct = pct(px - pos.entry_price, pos.entry_price);
+      const rMult = riskPerShare > 0 && pos.shares ? pnl / (riskPerShare * Math.abs(pos.shares)) : 0;
+      trades.push({ asset, entry_date: pos.entry_date, exit_date: date, entry_price: pos.entry_price, exit_price: px, shares: pos.shares, pnl: round2(pnl), return_pct: round2(retPct), r_multiple: round2(rMult), holding_days: daysBetween(pos.entry_date, date), exit_reason: reasonKind === 'stop' ? 'stop_loss' : reasonKind === 'target' ? 'target_reached' : 'time_stop', total_costs: est.total });
+      eventLog.push({ date, asset, action: reasonKind, quantity: -pos.shares, price: px, value: round2(tradeValue), cost: est.total, cash_after: round2(cash), equity_after: round2(cash + Object.entries(positions).filter(([a]) => a !== asset).reduce((s, [, p]) => s + (closeMaps[p.asset]?.[date] ?? p.entry_price) * p.shares, 0)), reason: `${reasonKind}: price=${px}` });
+      delete positions[asset];
+    }
+
+    // Process signal events
+    const events = eventsByDate[date] || [];
+    for (const evt of events) {
+      if (halted) break;
+      const action = (evt.action || '').toLowerCase();
+      const execPrice = +(evt.price || 0) > 0 ? +evt.price : (closeMaps[evt.asset]?.[date] || 0);
+      if (execPrice <= 0) { blockedEvents.push({ date, asset: evt.asset, action, reason: evt.reason, blocked: true, block_reason: 'No price available' }); continue; }
+      if (action === 'skip') { eventLog.push({ date, asset: evt.asset, action: 'skip', reason: evt.reason }); continue; }
+      if (action === 'blocked') { blockedEvents.push({ date, asset: evt.asset, action: 'blocked', reason: evt.reason, blocked: true, block_reason: evt.reason }); continue; }
+
+      if (action === 'enter') {
+        let blockReason = null;
+        if (+evt.confidence > 0 && +evt.confidence < riskRules.min_confidence) blockReason = `Confidence ${+evt.confidence} below minimum ${riskRules.min_confidence}`;
+        else if (positions[evt.asset]) blockReason = `Already holding ${evt.asset}`;
+        if (blockReason) { blockedEvents.push({ date, asset: evt.asset, action: 'enter', reason: evt.reason, blocked: true, block_reason: blockReason }); continue; }
+        const qty = +(evt.quantity || 0) > 0 ? +evt.quantity : 100;
+        const tradeValue = qty * execPrice;
+        const est = backtestEstimateCost(tradeValue, costs);
+        let posValNow = 0;
+        for (const [a, p] of Object.entries(positions)) posValNow += (closeMaps[a]?.[date] ?? p.entry_price) * p.shares;
+        const totalEq = cash + posValNow;
+        if (pct(tradeValue, totalEq) > riskRules.max_position_pct) { blockedEvents.push({ date, asset: evt.asset, action: 'enter', reason: evt.reason, blocked: true, block_reason: `Position ${pct(tradeValue, totalEq).toFixed(1)}% exceeds max ${riskRules.max_position_pct}%` }); continue; }
+        if (tradeValue + est.total > cash) { blockedEvents.push({ date, asset: evt.asset, action: 'enter', reason: evt.reason, blocked: true, block_reason: 'Insufficient cash' }); continue; }
+        cash -= tradeValue + est.total;
+        totalFees += est.commission; totalSlippage += est.slippage; totalTurnover += Math.abs(tradeValue);
+        positions[evt.asset] = { asset: evt.asset, shares: qty, entry_price: execPrice, entry_date: date, stop_price: +(evt.stop_price || 0), target_price: +(evt.target_price || 0), time_stop_days: +(evt.time_stop_days || 0) };
+        eventLog.push({ date, asset: evt.asset, action: 'enter', quantity: qty, price: execPrice, value: round2(tradeValue), cost: est.total, cash_after: round2(cash), equity_after: round2(cash + posValNow + tradeValue), reason: evt.reason });
+      } else if (action === 'add') {
+        if (!positions[evt.asset]) { blockedEvents.push({ date, asset: evt.asset, action: 'add', reason: evt.reason, blocked: true, block_reason: `No existing position in ${evt.asset}` }); continue; }
+        const qty = +(evt.quantity || 0) > 0 ? +evt.quantity : 50;
+        const tradeValue = qty * execPrice;
+        const est = backtestEstimateCost(tradeValue, costs);
+        if (tradeValue + est.total > cash) { blockedEvents.push({ date, asset: evt.asset, action: 'add', reason: evt.reason, blocked: true, block_reason: 'Insufficient cash' }); continue; }
+        const pos = positions[evt.asset];
+        const oldBasis = pos.shares * pos.entry_price;
+        pos.shares += qty;
+        pos.entry_price = pos.shares > 0 ? (oldBasis + tradeValue) / pos.shares : execPrice;
+        cash -= tradeValue + est.total;
+        totalFees += est.commission; totalSlippage += est.slippage; totalTurnover += Math.abs(tradeValue);
+        eventLog.push({ date, asset: evt.asset, action: 'add', quantity: qty, price: execPrice, value: round2(tradeValue), cost: est.total, cash_after: round2(cash), reason: evt.reason });
+      } else if (action === 'trim') {
+        if (!positions[evt.asset]) { blockedEvents.push({ date, asset: evt.asset, action: 'trim', reason: evt.reason, blocked: true, block_reason: `No existing position in ${evt.asset}` }); continue; }
+        const pos = positions[evt.asset];
+        const qty = Math.min(+(evt.quantity || 0) !== 0 ? Math.abs(+evt.quantity) : pos.shares * 0.5, pos.shares);
+        const tradeValue = qty * execPrice;
+        const est = backtestEstimateCost(tradeValue, costs);
+        cash += tradeValue - est.total;
+        totalFees += est.commission; totalSlippage += est.slippage; totalTurnover += Math.abs(tradeValue);
+        pos.shares -= qty;
+        if (pos.shares <= 0) delete positions[evt.asset];
+        eventLog.push({ date, asset: evt.asset, action: 'trim', quantity: -qty, price: execPrice, value: round2(tradeValue), cost: est.total, cash_after: round2(cash), reason: evt.reason });
+      } else if (action === 'exit') {
+        if (!positions[evt.asset]) { blockedEvents.push({ date, asset: evt.asset, action: 'exit', reason: evt.reason, blocked: true, block_reason: `No existing position in ${evt.asset}` }); continue; }
+        const pos = positions[evt.asset];
+        const tradeValue = pos.shares * execPrice;
+        const est = backtestEstimateCost(tradeValue, costs);
+        cash += tradeValue - est.total;
+        totalFees += est.commission; totalSlippage += est.slippage; totalTurnover += Math.abs(tradeValue);
+        const riskPerShare = pos.stop_price > 0 ? Math.abs(pos.entry_price - pos.stop_price) : pos.entry_price;
+        const pnl = (execPrice - pos.entry_price) * pos.shares;
+        const retPct = pct(execPrice - pos.entry_price, pos.entry_price);
+        const rMult = riskPerShare > 0 && pos.shares ? pnl / (riskPerShare * Math.abs(pos.shares)) : 0;
+        trades.push({ asset: evt.asset, entry_date: pos.entry_date, exit_date: date, entry_price: pos.entry_price, exit_price: execPrice, shares: pos.shares, pnl: round2(pnl), return_pct: round2(retPct), r_multiple: round2(rMult), holding_days: daysBetween(pos.entry_date, date), exit_reason: 'signal_exit', total_costs: est.total });
+        eventLog.push({ date, asset: evt.asset, action: 'exit', quantity: -pos.shares, price: execPrice, value: round2(tradeValue), cost: est.total, cash_after: round2(cash), reason: evt.reason });
+        delete positions[evt.asset];
+      } else if (['stop', 'target', 'time_stop'].includes(action)) {
+        if (!positions[evt.asset]) continue;
+        const pos = positions[evt.asset];
+        const tradeValue = pos.shares * execPrice;
+        const est = backtestEstimateCost(tradeValue, costs);
+        cash += tradeValue - est.total;
+        totalFees += est.commission; totalSlippage += est.slippage; totalTurnover += Math.abs(tradeValue);
+        const riskPerShare = pos.stop_price > 0 ? Math.abs(pos.entry_price - pos.stop_price) : pos.entry_price;
+        const pnl = (execPrice - pos.entry_price) * pos.shares;
+        const retPct = pct(execPrice - pos.entry_price, pos.entry_price);
+        const rMult = riskPerShare > 0 && pos.shares ? pnl / (riskPerShare * Math.abs(pos.shares)) : 0;
+        trades.push({ asset: evt.asset, entry_date: pos.entry_date, exit_date: date, entry_price: pos.entry_price, exit_price: execPrice, shares: pos.shares, pnl: round2(pnl), return_pct: round2(retPct), r_multiple: round2(rMult), holding_days: daysBetween(pos.entry_date, date), exit_reason: action === 'stop' ? 'stop_loss' : action === 'target' ? 'target_reached' : 'time_stop', total_costs: est.total });
+        eventLog.push({ date, asset: evt.asset, action, quantity: -pos.shares, price: execPrice, value: round2(tradeValue), cost: est.total, cash_after: round2(cash), reason: evt.reason });
+        delete positions[evt.asset];
+      }
+    }
+  }
+
+  // Close remaining positions
+  if (allDates.length) {
+    const lastDate = allDates[allDates.length - 1];
+    for (const [asset, pos] of Object.entries(positions)) {
+      const px = closeMaps[asset]?.[lastDate] ?? pos.entry_price;
+      const tradeValue = pos.shares * px;
+      const est = backtestEstimateCost(tradeValue, costs);
+      cash += tradeValue - est.total;
+      totalFees += est.commission; totalSlippage += est.slippage; totalTurnover += Math.abs(tradeValue);
+      const riskPerShare = pos.stop_price > 0 ? Math.abs(pos.entry_price - pos.stop_price) : pos.entry_price;
+      const pnl = (px - pos.entry_price) * pos.shares;
+      const retPct = pct(px - pos.entry_price, pos.entry_price);
+      const rMult = riskPerShare > 0 && pos.shares ? pnl / (riskPerShare * Math.abs(pos.shares)) : 0;
+      trades.push({ asset, entry_date: pos.entry_date, exit_date: lastDate, entry_price: pos.entry_price, exit_price: px, shares: pos.shares, pnl: round2(pnl), return_pct: round2(retPct), r_multiple: round2(rMult), holding_days: daysBetween(pos.entry_date, lastDate), exit_reason: 'end_of_backtest', total_costs: est.total });
+      eventLog.push({ date: lastDate, asset, action: 'exit', quantity: -pos.shares, price: px, value: round2(tradeValue), cost: est.total, cash_after: round2(cash), reason: 'End of backtest' });
+    }
+  }
+
+  const finalEquity = cash;
+  const totalReturn = pct(finalEquity - initialCapital, initialCapital);
+  const winning = trades.filter(t => t.pnl > 0);
+  const losing = trades.filter(t => t.pnl <= 0);
+  const winRate = trades.length ? pct(winning.length, trades.length) : 0;
+  const avgRet = trades.length ? trades.reduce((s, t) => s + t.return_pct, 0) / trades.length : 0;
+  const avgR = trades.length ? trades.reduce((s, t) => s + t.r_multiple, 0) / trades.length : 0;
+  let benchReturn = 0, alpha = 0;
+  if (initialBench && benchmark.length) {
+    const lastBench = benchMap[allDates[allDates.length - 1]];
+    if (lastBench !== undefined) { benchReturn = pct(lastBench - initialBench, initialBench); alpha = totalReturn - benchReturn; }
+  }
+
+  return {
+    initial_capital: initialCapital, final_equity: round2(finalEquity), total_return_pct: round2(totalReturn),
+    max_drawdown_pct: round2(maxDD), total_trades: trades.length, winning_trades: winning.length, losing_trades: losing.length,
+    win_rate: round2(winRate), avg_trade_return_pct: round2(avgRet), avg_r_multiple: round2(avgR),
+    total_fees: round2(totalFees), total_slippage: round2(totalSlippage), total_costs: round2(totalFees + totalSlippage),
+    benchmark_return_pct: round2(benchReturn), alpha_vs_benchmark: round2(alpha), total_turnover: round2(totalTurnover),
+    trades, equity_curve: equityCurve, event_log: eventLog, blocked_events: blockedEvents,
+  };
+}
+
+function renderBacktestUI(result) {
+  const fmt = v => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtp = v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+
+  document.getElementById('bt-initial').textContent = fmt(result.initial_capital);
+  const finalEl = document.getElementById('bt-final');
+  finalEl.textContent = fmt(result.final_equity);
+  finalEl.className = 'metric-value ' + (result.final_equity >= result.initial_capital ? 'positive' : 'negative');
+  const retEl = document.getElementById('bt-return');
+  retEl.textContent = fmtp(result.total_return_pct);
+  retEl.className = 'metric-value ' + (result.total_return_pct >= 0 ? 'positive' : 'negative');
+  document.getElementById('bt-dd').textContent = result.max_drawdown_pct.toFixed(2) + '%';
+  document.getElementById('bt-trades').textContent = result.total_trades;
+  document.getElementById('bt-winrate').textContent = result.win_rate.toFixed(1) + '%';
+  const avgRetEl = document.getElementById('bt-avg-ret');
+  avgRetEl.textContent = fmtp(result.avg_trade_return_pct);
+  avgRetEl.className = 'metric-value ' + (result.avg_trade_return_pct >= 0 ? 'positive' : 'negative');
+  const avgREl = document.getElementById('bt-avg-r');
+  avgREl.textContent = (result.avg_r_multiple >= 0 ? '+' : '') + result.avg_r_multiple.toFixed(2);
+  avgREl.className = 'metric-value ' + (result.avg_r_multiple >= 0 ? 'positive' : 'negative');
+  document.getElementById('bt-costs').textContent = fmt(result.total_costs);
+  document.getElementById('bt-turnover').textContent = fmt(result.total_turnover);
+  const benchEl = document.getElementById('bt-bench-ret');
+  benchEl.textContent = fmtp(result.benchmark_return_pct);
+  benchEl.className = 'metric-value ' + (result.benchmark_return_pct >= 0 ? 'positive' : 'negative');
+  const alphaEl = document.getElementById('bt-alpha');
+  alphaEl.textContent = fmtp(result.alpha_vs_benchmark);
+  alphaEl.className = 'metric-value ' + (result.alpha_vs_benchmark >= 0 ? 'positive' : 'negative');
+
+  // Equity chart (ASCII bar visualization)
+  const chartDiv = document.getElementById('bt-equity-chart');
+  if (result.equity_curve.length) {
+    const eqs = result.equity_curve.map(e => e.total_equity);
+    const minEq = Math.min(...eqs);
+    const maxEq = Math.max(...eqs);
+    const range = maxEq - minEq || 1;
+    const barW = 60;
+    let chartHtml = '<div style="font-family:var(--font-mono);font-size:11px;line-height:1.4;overflow-x:auto">';
+    for (const ep of result.equity_curve) {
+      const barLen = Math.round(((ep.total_equity - minEq) / range) * barW);
+      const bar = '█'.repeat(barLen) + '░'.repeat(barW - barLen);
+      const ddStr = ep.drawdown_pct > 0 ? ` -${ep.drawdown_pct.toFixed(1)}%` : '';
+      const benchStr = ep.benchmark_value !== null ? ` bench:${ep.benchmark_value.toLocaleString()}` : '';
+      chartHtml += `<div>${ep.date} <span style="color:var(--accent)">${bar}</span> ${ep.total_equity.toLocaleString()}${ddStr}${benchStr}</div>`;
+    }
+    chartHtml += '</div>';
+    chartDiv.innerHTML = chartHtml;
+  } else {
+    chartDiv.innerHTML = '<p class="placeholder-text">No equity data.</p>';
+  }
+
+  // Equity table
+  const eqTbody = document.getElementById('bt-equity-tbody');
+  eqTbody.innerHTML = result.equity_curve.map(ep => {
+    const benchStr = ep.benchmark_value !== null ? fmt(ep.benchmark_value) : '-';
+    return `<tr><td>${escHtml(ep.date)}</td><td>${fmt(ep.cash)}</td><td>${fmt(ep.positions_value)}</td><td>${fmt(ep.total_equity)}</td><td>${ep.drawdown_pct.toFixed(2)}%</td><td>${benchStr}</td></tr>`;
+  }).join('');
+
+  // Trades table
+  const tradesTbody = document.getElementById('bt-trades-tbody');
+  tradesTbody.innerHTML = result.trades.map(t => {
+    const pnlCls = t.pnl > 0 ? 'positive' : t.pnl < 0 ? 'negative' : '';
+    const retCls = t.return_pct > 0 ? 'positive' : t.return_pct < 0 ? 'negative' : '';
+    return `<tr>
+      <td>${escHtml(t.asset)}</td><td>${escHtml(t.entry_date)}</td><td>${escHtml(t.exit_date)}</td>
+      <td>${t.shares >= 0 ? '+' : ''}${t.shares.toLocaleString()}</td>
+      <td>${t.entry_price.toFixed(2)}</td><td>${t.exit_price.toFixed(2)}</td>
+      <td class="${pnlCls}">${t.pnl >= 0 ? '+' : ''}${fmt(t.pnl)}</td>
+      <td class="${retCls}">${fmtp(t.return_pct)}</td>
+      <td>${(t.r_multiple >= 0 ? '+' : '') + t.r_multiple.toFixed(2)}</td>
+      <td>${t.holding_days}</td><td>${escHtml(t.exit_reason)}</td>
+    </tr>`;
+  }).join('');
+
+  // Event log
+  const logDiv = document.getElementById('bt-event-log');
+  logDiv.innerHTML = result.event_log.map(e => {
+    const valStr = e.value ? ` value=${e.value.toLocaleString()}` : '';
+    const costStr = e.cost ? ` cost=${e.cost.toFixed(2)}` : '';
+    return `<div class="note-item"><strong>${escHtml(e.date)}</strong> [${escHtml(e.action)}] ${escHtml(e.asset || '')}${valStr}${costStr} — ${escHtml(e.reason || '')}</div>`;
+  }).join('') || '<div class="note-item">No events.</div>';
+
+  // Blocked events
+  const blockedPanel = document.getElementById('bt-blocked-panel');
+  const blockedDiv = document.getElementById('bt-blocked-list');
+  if (result.blocked_events.length) {
+    blockedPanel.style.display = '';
+    blockedDiv.innerHTML = result.blocked_events.map(e =>
+      `<div class="blocker-item"><strong>${escHtml(e.date)}</strong> [${escHtml(e.action)}] ${escHtml(e.asset)} — BLOCKED: ${escHtml(e.block_reason)}</div>`
+    ).join('');
+  } else {
+    blockedPanel.style.display = 'none';
+  }
+}
+
+function runBacktestAnalysis() {
+  const editor = document.getElementById('bt-editor');
+  let data;
+  try { data = JSON.parse(editor.value); } catch (e) { alert('Invalid JSON: ' + e.message); return; }
+  const result = backtestRun(data);
+  renderBacktestUI(result);
+  window._lastBtResult = result;
+}
+
+// Backtest Example Data
+const BACKTEST_EXAMPLE = {
+  initial_capital: 100000,
+  price_series: {
+    AAPL: [
+      {date:'2026-01-02',open:180,high:183,low:179,close:182,volume:50000000},
+      {date:'2026-01-03',open:182,high:185,low:181,close:184,volume:48000000},
+      {date:'2026-01-06',open:184,high:188,low:183,close:187,volume:52000000},
+      {date:'2026-01-07',open:187,high:190,low:186,close:189,volume:47000000},
+      {date:'2026-01-08',open:189,high:192,low:188,close:191,volume:51000000},
+      {date:'2026-01-09',open:191,high:193,low:190,close:192,volume:46000000},
+      {date:'2026-01-12',open:192,high:195,low:191,close:194,volume:49000000},
+      {date:'2026-01-13',open:194,high:196,low:193,close:195,volume:45000000},
+      {date:'2026-01-14',open:195,high:197,low:194,close:196,volume:44000000},
+      {date:'2026-01-15',open:196,high:198,low:195,close:197,volume:47000000},
+    ],
+    MSFT: [
+      {date:'2026-01-02',open:370,high:374,low:368,close:372,volume:30000000},
+      {date:'2026-01-03',open:372,high:376,low:371,close:375,volume:28000000},
+      {date:'2026-01-06',open:375,high:378,low:373,close:377,volume:31000000},
+      {date:'2026-01-07',open:377,high:380,low:375,close:378,volume:29000000},
+      {date:'2026-01-08',open:378,high:382,low:376,close:380,volume:32000000},
+      {date:'2026-01-09',open:380,high:383,low:378,close:381,volume:27000000},
+      {date:'2026-01-12',open:381,high:384,low:379,close:382,volume:30000000},
+      {date:'2026-01-13',open:382,high:385,low:380,close:383,volume:26000000},
+      {date:'2026-01-14',open:383,high:386,low:381,close:384,volume:28000000},
+      {date:'2026-01-15',open:384,high:387,low:382,close:385,volume:29000000},
+    ],
+    TSLA: [
+      {date:'2026-01-02',open:250,high:255,low:248,close:253,volume:80000000},
+      {date:'2026-01-03',open:253,high:258,low:251,close:256,volume:75000000},
+      {date:'2026-01-06',open:256,high:260,low:254,close:258,volume:78000000},
+      {date:'2026-01-07',open:258,high:262,low:256,close:260,volume:72000000},
+      {date:'2026-01-08',open:260,high:264,low:258,close:262,volume:81000000},
+      {date:'2026-01-09',open:262,high:265,low:260,close:263,volume:70000000},
+      {date:'2026-01-12',open:263,high:266,low:261,close:264,volume:76000000},
+      {date:'2026-01-13',open:264,high:267,low:262,close:265,volume:69000000},
+      {date:'2026-01-14',open:265,high:268,low:263,close:266,volume:73000000},
+      {date:'2026-01-15',open:266,high:269,low:264,close:267,volume:71000000},
+    ],
+  },
+  signal_events: [
+    {date:'2026-01-02',asset:'AAPL',action:'enter',quantity:100,reason:'Breakout above resistance with volume confirmation',confidence:80,stop_price:175,target_price:200,time_stop_days:15},
+    {date:'2026-01-06',asset:'MSFT',action:'enter',quantity:50,reason:'Earnings momentum play with sector tailwind',confidence:75,stop_price:360,target_price:400,time_stop_days:20},
+    {date:'2026-01-09',asset:'AAPL',action:'exit',reason:'Taking profits ahead of macro event',confidence:0},
+    {date:'2026-01-07',asset:'TSLA',action:'enter',quantity:0,reason:'Low confidence speculative entry — blocked',confidence:35,stop_price:240,target_price:280},
+    {date:'2026-01-08',asset:'MSFT',action:'add',quantity:25,reason:'Adding on confirmed breakout',confidence:70},
+  ],
+  benchmark: [
+    {date:'2026-01-02',open:5000,high:5020,low:4980,close:5010,volume:3000000000},
+    {date:'2026-01-03',open:5010,high:5040,low:5000,close:5030,volume:2900000000},
+    {date:'2026-01-06',open:5030,high:5060,low:5020,close:5050,volume:3100000000},
+    {date:'2026-01-07',open:5050,high:5080,low:5040,close:5070,volume:2800000000},
+    {date:'2026-01-08',open:5070,high:5100,low:5060,close:5090,volume:3200000000},
+    {date:'2026-01-09',open:5090,high:5110,low:5080,close:5100,volume:2700000000},
+    {date:'2026-01-12',open:5100,high:5120,low:5090,close:5110,volume:3000000000},
+    {date:'2026-01-13',open:5110,high:5130,low:5100,close:5120,volume:2600000000},
+    {date:'2026-01-14',open:5120,high:5140,low:5110,close:5130,volume:2800000000},
+    {date:'2026-01-15',open:5130,high:5150,low:5120,close:5140,volume:2900000000},
+  ],
+  costs: { commission_per_trade: 1, slippage_bps: 5 },
+  risk_rules: { max_position_pct: 30, max_drawdown_pct: 25, min_confidence: 60 },
+};
+
+// ---------------------------------------------------------------------------
 // UI Wiring
 // ---------------------------------------------------------------------------
 
@@ -2542,6 +2950,38 @@ document.addEventListener('DOMContentLoaded', () => {
       type: 'rebalance',
       description: 'Portfolio rebalance with 5 holdings, target allocations, 2 candidate signals (one passing, one blocked), and cost assumptions. Demonstrates trim, add, buy, hold, and skip.',
       data: REBALANCE_EXAMPLE,
+    };
+    populateExamples();
+  }
+
+  // Wire backtest tab
+  const btnBtLoad = document.getElementById('btn-bt-load');
+  const btnBtRun = document.getElementById('btn-bt-run');
+  const btnBtCopy = document.getElementById('btn-bt-copy');
+
+  if (btnBtLoad) {
+    btnBtLoad.addEventListener('click', () => {
+      document.getElementById('bt-editor').value = JSON.stringify(BACKTEST_EXAMPLE, null, 2);
+      runBacktestAnalysis();
+    });
+  }
+  if (btnBtRun) {
+    btnBtRun.addEventListener('click', runBacktestAnalysis);
+  }
+  if (btnBtCopy) {
+    btnBtCopy.addEventListener('click', () => {
+      if (window._lastBtResult)
+        navigator.clipboard.writeText(JSON.stringify(window._lastBtResult, null, 2)).catch(() => {});
+    });
+  }
+
+  // Add backtest example to EXAMPLES gallery
+  if (typeof EXAMPLES !== 'undefined') {
+    EXAMPLES.backtest_scenario = {
+      name: 'Backtest / Signal Replay',
+      type: 'backtest',
+      description: 'Multi-asset backtest with AAPL, MSFT, TSLA. Demonstrates enter, exit, add, blocked signal, and benchmark comparison with costs.',
+      data: BACKTEST_EXAMPLE,
     };
     populateExamples();
   }

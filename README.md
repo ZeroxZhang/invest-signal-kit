@@ -123,6 +123,7 @@ invest-signal-kit serve --port 8765
 | `monte-carlo` | Run Monte Carlo risk simulation (bootstrap/parametric, stress overlays) | `python3 -m invest_signal_kit monte-carlo examples/monte_carlo_config.json` |
 | `import` | Import CSV/JSON data (price, signal, holdings, benchmark) | `python3 -m invest_signal_kit import price examples/prices.csv` |
 | `build-scenario` | Build a backtest scenario from imported data files | `python3 -m invest_signal_kit build-scenario --prices examples/prices.csv --signals examples/signals.csv` |
+| `optimize-portfolio` | Run portfolio optimizer / efficient frontier | `python3 -m invest_signal_kit optimize-portfolio examples/optimizer_config.json` |
 | `serve` | Launch the local browser workstation | `python3 -m invest_signal_kit serve --port 8765` |
 
 ## Practical Workflow
@@ -424,9 +425,65 @@ python3 -m invest_signal_kit backtest scenario.json --format markdown -o backtes
 
 # 5. Run Monte Carlo risk simulation on the same price data
 python3 -m invest_signal_kit monte-carlo examples/monte_carlo_config.json --format markdown -o risk_report.md
+
+# 6. Portfolio optimization
+python3 -m invest_signal_kit optimize-portfolio examples/optimizer_config.json --format markdown -o optimizer_report.md
 ```
 
-### 10. Data Import & Scenario Builder
+### 10. Portfolio Optimizer / Efficient Frontier Lab
+
+Find optimal portfolio weights from historical price data using deterministic, seeded search:
+
+```bash
+# JSON output (default)
+python3 -m invest_signal_kit optimize-portfolio examples/optimizer_config.json
+
+# Markdown report
+python3 -m invest_signal_kit optimize-portfolio examples/optimizer_config.json --format markdown
+
+# Save to file
+python3 -m invest_signal_kit optimize-portfolio examples/optimizer_config.json -o optimizer_report.md
+
+# CLI overrides
+python3 -m invest_signal_kit optimize-portfolio examples/optimizer_config.json \
+  --risk-free-rate 0.05 --max-weight 0.40 --seed 99
+```
+
+The optimizer:
+- Computes annualized return statistics (mean, volatility, covariance, correlation) from price series
+- Finds optimal portfolios: minimum variance, maximum Sharpe, risk parity, target return, target volatility
+- Generates the efficient frontier via deterministic grid/random seeded search
+- Reports risk contribution (fraction of total risk from each asset)
+- Computes turnover from current portfolio weights
+- Supports constraints: min/max weight, max single position, cash weight, long-only, pinned weights
+- Accepts the same `price_series` format as backtest and Monte Carlo commands
+- All stdlib-only Python (no NumPy/SciPy), deterministic with seeded randomness
+
+Or use the **Optimizer** tab in the web UI to load, edit, and run optimizations interactively with frontier visualization.
+
+**Full workflow — CSV to backtest to Monte Carlo to optimizer to rebalance:**
+
+```bash
+# 1. Import price data
+python3 -m invest_signal_kit import price examples/prices.csv -o prices.json
+
+# 2. Build backtest scenario
+python3 -m invest_signal_kit build-scenario --prices examples/prices.csv --signals examples/signals.csv -o scenario.json
+
+# 3. Run backtest
+python3 -m invest_signal_kit backtest scenario.json --format markdown
+
+# 4. Monte Carlo risk simulation
+python3 -m invest_signal_kit monte-carlo examples/monte_carlo_config.json --format markdown
+
+# 5. Portfolio optimization
+python3 -m invest_signal_kit optimize-portfolio examples/optimizer_config.json --format markdown
+
+# 6. Rebalance plan
+python3 -m invest_signal_kit rebalance examples/rebalance_plan.json --format markdown
+```
+
+### 11. Data Import & Scenario Builder
 
 Import broker/export CSV files and build backtest scenarios without hand-editing JSON.
 
@@ -499,7 +556,7 @@ python3 -m invest_signal_kit serve --port 8765
 
 Validation catches: missing columns, bad numbers, duplicate dates, unknown actions, empty files — with row-level error messages.
 
-### 10. Batch Signal Analysis
+### 12. Batch Signal Analysis
 
 Analyze multiple signals at once:
 
@@ -522,6 +579,7 @@ The UI includes:
 - **Scenario & Sizing**: bull/base/bear expected value, risk-budget position sizing calculator
 - **Portfolio**: portfolio risk workstation with exposures, risk budget, candidate rankings, stress tests
 - **Rebalance**: trade plan generator with order blotter, guardrails, execution phases, before/after analysis
+- **Optimizer**: portfolio optimizer with min-variance, max-Sharpe, risk-parity, efficient frontier visualization
 - **Decision Memo**: generated memo summarizing all scorecards, readiness, and risk controls
 - **Example Gallery**: pre-loaded examples for different signal types and portfolio workflows
 
@@ -698,6 +756,7 @@ All formulas are documented in [docs/framework.md](docs/framework.md). All input
 | `examples/holdings.csv` | CSV | Portfolio holdings for import |
 | `examples/benchmark.csv` | CSV | Benchmark series for import |
 | `examples/generated_scenario.json` | backtest | Scenario built from CSV imports |
+| `examples/optimizer_config.json` | optimizer | 3-asset optimizer config with target return/volatility, current weights |
 
 ## Validation Rules
 
@@ -734,6 +793,7 @@ python3 -m invest_signal_kit memo examples/professional_signal.json
 python3 -m invest_signal_kit render examples/etf_signal.json --output /tmp/render.md
 python3 -m invest_signal_kit portfolio examples/portfolio_workflow.json
 python3 -m invest_signal_kit batch examples/etf_signal.json examples/stock_shift_signal.json
+python3 -m invest_signal_kit optimize-portfolio examples/optimizer_config.json --format markdown
 ```
 
 ## Disclaimer

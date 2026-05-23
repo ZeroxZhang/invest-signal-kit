@@ -20,6 +20,7 @@
       <button class="nav-btn" data-tab="rebalance">Rebalance</button>
       <button class="nav-btn" data-tab="backtest">Backtest</button>
       <button class="nav-btn" data-tab="monte-carlo">Monte Carlo</button>
+      <button class="nav-btn" data-tab="optimizer">Optimizer</button>
       <button class="nav-btn" data-tab="importer">Import &amp; Build</button>
       <button class="nav-btn" data-tab="journal">Journal</button>
       <button class="nav-btn" data-tab="decision-memo">Decision Memo</button>
@@ -785,6 +786,72 @@
       <div class="panel">
         <h2>Final Equity Distribution</h2>
         <div id="mc-histogram" class="mc-histogram"></div>
+      </div>
+    </section>
+
+    <!-- ===== Portfolio Optimizer ===== -->
+    <section id="optimizer" class="tab-panel">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Portfolio Optimizer / Efficient Frontier Lab</h2>
+          <div class="btn-group">
+            <button id="btn-opt-load" class="btn btn-sm">Load Example</button>
+            <button id="btn-opt-run" class="btn btn-sm btn-primary">Run Optimizer</button>
+            <button id="btn-opt-copy" class="btn btn-sm">Copy JSON</button>
+          </div>
+        </div>
+        <textarea id="opt-editor" spellcheck="false" placeholder="Paste optimizer config JSON here (risk_free_rate, min_weight, max_weight, cash_weight, long_only, pinned_weights, current_weights, target_return, target_volatility, frontier_points, seed, search_iterations, price_series)..."></textarea>
+      </div>
+
+      <!-- Return Stats -->
+      <div class="panel">
+        <h2>Return Statistics</h2>
+        <div class="summary-metrics" id="opt-stats-summary"></div>
+        <div class="table-container" style="margin-top:12px">
+          <table class="data-table" id="opt-stats-table">
+            <thead>
+              <tr><th>Asset</th><th>Ann. Return</th><th>Ann. Volatility</th></tr>
+            </thead>
+            <tbody id="opt-stats-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Correlation Matrix -->
+      <div class="panel">
+        <h2>Correlation Matrix</h2>
+        <div class="table-container">
+          <table class="data-table" id="opt-corr-table">
+            <thead id="opt-corr-thead"></thead>
+            <tbody id="opt-corr-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Optimal Portfolios -->
+      <div class="panel">
+        <h2>Optimal Portfolios</h2>
+        <div id="opt-portfolios"></div>
+      </div>
+
+      <!-- Efficient Frontier -->
+      <div class="panel">
+        <h2>Efficient Frontier</h2>
+        <div id="opt-frontier-chart" class="mc-paths-chart"></div>
+        <div class="table-container" style="margin-top:12px">
+          <table class="data-table" id="opt-frontier-table">
+            <thead>
+              <tr><th>#</th><th>Return</th><th>Volatility</th><th>Sharpe</th></tr>
+            </thead>
+            <tbody id="opt-frontier-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Warnings -->
+      <div class="panel" id="opt-warnings-panel" style="display:none">
+        <h2>Warnings</h2>
+        <div id="opt-warnings" class="blockers-list"></div>
       </div>
     </section>
 

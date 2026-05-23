@@ -3424,6 +3424,477 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // =====================================================================
+  // Portfolio Optimizer
+  // =====================================================================
+
+  function optMean(arr) { return arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0; }
+  function optStd(arr) {
+    if (arr.length < 2) return 0;
+    const m = optMean(arr);
+    return Math.sqrt(arr.reduce((s, v) => s + (v - m) ** 2, 0) / (arr.length - 1));
+  }
+  function optCov(xs, ys) {
+    if (xs.length < 2 || xs.length !== ys.length) return 0;
+    const mx = optMean(xs), my = optMean(ys);
+    return xs.reduce((s, x, i) => s + (x - mx) * (ys[i] - my), 0) / (xs.length - 1);
+  }
+  function optLogReturns(prices) {
+    const rets = [];
+    for (let i = 1; i < prices.length; i++) {
+      rets.push(prices[i-1] > 0 && prices[i] > 0 ? Math.log(prices[i] / prices[i-1]) : 0);
+    }
+    return rets;
+  }
+  function optPortReturn(w, mu) { return w.reduce((s, v, i) => s + v * mu[i], 0); }
+  function optPortVar(w, cov) {
+    let v = 0;
+    for (let i = 0; i < w.length; i++)
+      for (let j = 0; j < w.length; j++)
+        v += w[i] * w[j] * cov[i][j];
+    return v;
+  }
+  function optPortVol(w, cov) { return Math.sqrt(Math.max(optPortVar(w, cov), 0)); }
+  function optRiskContrib(w, cov) {
+    const n = w.length, vol = optPortVol(w, cov);
+    if (vol <= 0) return Array(n).fill(0);
+    const rc = [];
+    for (let i = 0; i < n; i++) {
+      let marginal = 0;
+      for (let j = 0; j < n; j++) marginal += w[j] * cov[i][j];
+      rc.push(w[i] * marginal / vol);
+    }
+    return rc;
+  }
+  function optRiskContribFrac(w, cov) {
+    const rc = optRiskContrib(w, cov);
+    const total = rc.reduce((s, v) => s + v, 0);
+    if (total <= 0) return Array(w.length).fill(1 / w.length);
+    return rc.map(r => r / total);
+  }
+  function optTurnover(newW, curW, assets) {
+    return assets.reduce((s, a) => s + Math.abs((newW[a] || 0) - (curW[a] || 0)), 0);
+  }
+
+  function optGenerateWeights(n, rng, minW, maxW, longOnly) {
+    const raw = Array.from({length: n}, () => rng.random());
+    let total = raw.reduce((s, v) => s + v, 0);
+    if (total <= 0) return Array(n).fill(1 / n);
+    let w = raw.map(v => v / total);
+    const lo = longOnly ? minW : -maxW;
+    w = w.map(v => Math.max(lo, Math.min(maxW, v)));
+    const wSum = w.reduce((s, v) => s + v, 0);
+    if (wSum > 0) w = w.map(v => v / wSum);
+    return w;
+  }
+
+  function optApplyConstraints(w, assets, config) {
+    const n = w.length, result = [...w];
+    const pinnedSum = Object.values(config.pinned_weights || {}).reduce((s, v) => s + v, 0);
+    const pinnedIdx = new Set();
+    assets.forEach((a, i) => { if (config.pinned_weights && config.pinned_weights[a] !== undefined) { result[i] = config.pinned_weights[a]; pinnedIdx.add(i); } });
+    const maxPer = Math.min(config.max_weight || 1, config.max_single_position || 1);
+    const lo = config.long_only !== false ? (config.min_weight || 0) : -maxPer;
+    const freeIdx = [...Array(n).keys()].filter(i => !pinnedIdx.has(i));
+    freeIdx.forEach(i => { result[i] = Math.max(lo, Math.min(maxPer, result[i])); });
+    const freeTarget = Math.max(0, 1 - pinnedSum - (config.cash_weight || 0));
+    const freeSum = freeIdx.reduce((s, i) => s + result[i], 0);
+    if (freeSum > 0 && freeTarget > 0) freeIdx.forEach(i => { result[i] = result[i] / freeSum * freeTarget; });
+    else if (freeTarget > 0 && freeIdx.length) freeIdx.forEach(i => { result[i] = freeTarget / freeIdx.length; });
+    freeIdx.forEach(i => { result[i] = Math.max(lo, Math.min(maxPer, result[i])); });
+    const fs2 = freeIdx.reduce((s, i) => s + result[i], 0);
+    if (fs2 > 0 && freeTarget > 0) freeIdx.forEach(i => { result[i] = result[i] / fs2 * freeTarget; });
+    return result;
+  }
+
+  function optMakePoint(w, assets, stats, config) {
+    const ret = optPortReturn(w, stats.mean_returns);
+    const vol = optPortVol(w, stats.cov_matrix);
+    const rf = config.risk_free_rate || 0.04;
+    const sharpe = vol > 0 ? (ret - rf) / vol : 0;
+    const rcFrac = optRiskContribFrac(w, stats.cov_matrix);
+    const wDict = {}, rcDict = {};
+    assets.forEach((a, i) => { wDict[a] = +w[i].toFixed(6); rcDict[a] = +rcFrac[i].toFixed(6); });
+    const turnover = optTurnover(wDict, config.current_weights || {}, assets);
+    return { weights: wDict, expected_return: +ret.toFixed(6), volatility: +vol.toFixed(6), sharpe: +sharpe.toFixed(6), risk_contribution: rcDict, turnover: +turnover.toFixed(6) };
+  }
+
+  function optComputeReturnStats(priceSeries) {
+    const assets = Object.keys(priceSeries).sort();
+    if (!assets.length) return null;
+    const allRets = {};
+    let minLen = Infinity;
+    for (const a of assets) {
+      const bars = (priceSeries[a] || []).slice().sort((x, y) => (x.date || '').localeCompare(y.date || ''));
+      const closes = bars.map(b => +b.close || 0);
+      const rets = optLogReturns(closes);
+      allRets[a] = rets;
+      minLen = Math.min(minLen, rets.length);
+    }
+    if (minLen < 2) return { assets, mean_returns: [], volatilities: [], cov_matrix: [], corr_matrix: [], observation_count: minLen };
+    for (const a of assets) allRets[a] = allRets[a].slice(0, minLen);
+    const TRADING_DAYS = 252;
+    const dailyMeans = assets.map(a => optMean(allRets[a]));
+    const dailyStds = assets.map(a => optStd(allRets[a]));
+    const n = assets.length;
+    const dailyCov = Array.from({length: n}, (_, i) => Array.from({length: n}, (_, j) => optCov(allRets[assets[i]], allRets[assets[j]])));
+    const annMeans = dailyMeans.map(m => m * TRADING_DAYS);
+    const annStds = dailyStds.map(s => s * Math.sqrt(TRADING_DAYS));
+    const annCov = dailyCov.map(row => row.map(v => v * TRADING_DAYS));
+    const corr = Array.from({length: n}, (_, i) => Array.from({length: n}, (_, j) => {
+      if (annStds[i] > 0 && annStds[j] > 0) return annCov[i][j] / (annStds[i] * annStds[j]);
+      return i === j ? 1 : 0;
+    }));
+    return { assets, mean_returns: annMeans, volatilities: annStds, cov_matrix: annCov, corr_matrix: corr, observation_count: minLen };
+  }
+
+  function optRunOptimizer(config, priceSeries) {
+    const warnings = [];
+    const stats = optComputeReturnStats(priceSeries);
+    if (!stats || !stats.assets.length) { warnings.push('No assets found.'); return { warnings }; }
+    if (stats.observation_count < 2) { warnings.push('Fewer than 2 observations.'); return { return_stats: stats, warnings }; }
+
+    const rng = createRng(config.seed || 42);
+    const n = stats.assets.length;
+    const iters = config.search_iterations || 5000;
+
+    // Min Variance
+    let bestW = null, bestVar = Infinity;
+    for (let i = 0; i < iters; i++) {
+      const raw = optGenerateWeights(n, rng, config.min_weight || 0, config.max_weight || 1, config.long_only !== false);
+      const w = optApplyConstraints(raw, stats.assets, config);
+      const v = optPortVar(w, stats.cov_matrix);
+      if (v < bestVar) { bestVar = v; bestW = w; }
+    }
+    if (!bestW) bestW = Array(n).fill(1 / n);
+    const minVar = optMakePoint(bestW, stats.assets, stats, config);
+
+    // Max Sharpe
+    bestW = null; let bestSharpe = -Infinity;
+    for (let i = 0; i < iters; i++) {
+      const raw = optGenerateWeights(n, rng, config.min_weight || 0, config.max_weight || 1, config.long_only !== false);
+      const w = optApplyConstraints(raw, stats.assets, config);
+      const ret = optPortReturn(w, stats.mean_returns);
+      const vol = optPortVol(w, stats.cov_matrix);
+      const s = vol > 0 ? (ret - (config.risk_free_rate || 0.04)) / vol : 0;
+      if (s > bestSharpe) { bestSharpe = s; bestW = w; }
+    }
+    if (!bestW) bestW = Array(n).fill(1 / n);
+    const maxSharpe = optMakePoint(bestW, stats.assets, stats, config);
+
+    // Risk Parity
+    let rpW = Array(n).fill(1 / n);
+    for (let iter = 0; iter < 200; iter++) {
+      const vol = optPortVol(rpW, stats.cov_matrix);
+      if (vol <= 0) break;
+      const rc = optRiskContrib(rpW, stats.cov_matrix);
+      const targetRc = vol / n;
+      const newW = rpW.map((w, i) => rc[i] > 0 ? w * Math.sqrt(targetRc / rc[i]) : w * 1.1);
+      const wSum = newW.reduce((s, v) => s + v, 0);
+      if (wSum > 0) for (let i = 0; i < n; i++) newW[i] /= wSum;
+      const adjW = optApplyConstraints(newW, stats.assets, config);
+      const maxDiff = Math.max(...adjW.map((v, i) => Math.abs(v - rpW[i])));
+      rpW = adjW;
+      if (maxDiff < 1e-8) break;
+    }
+    const riskParity = optMakePoint(rpW, stats.assets, stats, config);
+
+    // Target Return
+    let targetRetPt = null;
+    if (config.target_return != null) {
+      bestW = null; bestVar = Infinity;
+      for (let i = 0; i < iters; i++) {
+        const raw = optGenerateWeights(n, rng, config.min_weight || 0, config.max_weight || 1, config.long_only !== false);
+        const w = optApplyConstraints(raw, stats.assets, config);
+        const ret = optPortReturn(w, stats.mean_returns);
+        if (ret >= config.target_return) {
+          const v = optPortVar(w, stats.cov_matrix);
+          if (v < bestVar) { bestVar = v; bestW = w; }
+        }
+      }
+      if (bestW) targetRetPt = optMakePoint(bestW, stats.assets, stats, config);
+      else warnings.push('Could not find portfolio with return >= ' + (config.target_return * 100).toFixed(1) + '%');
+    }
+
+    // Target Volatility
+    let targetVolPt = null;
+    if (config.target_volatility != null) {
+      bestW = null; let bestRet = -Infinity;
+      for (let i = 0; i < iters; i++) {
+        const raw = optGenerateWeights(n, rng, config.min_weight || 0, config.max_weight || 1, config.long_only !== false);
+        const w = optApplyConstraints(raw, stats.assets, config);
+        const vol = optPortVol(w, stats.cov_matrix);
+        if (vol <= config.target_volatility) {
+          const ret = optPortReturn(w, stats.mean_returns);
+          if (ret > bestRet) { bestRet = ret; bestW = w; }
+        }
+      }
+      if (bestW) targetVolPt = optMakePoint(bestW, stats.assets, stats, config);
+      else warnings.push('Could not find portfolio with volatility <= ' + (config.target_volatility * 100).toFixed(1) + '%');
+    }
+
+    // Efficient Frontier
+    const frontierRng = createRng((config.seed || 42) + 1);
+    const minRet = Math.min(...stats.mean_returns);
+    const maxRet = Math.max(...stats.mean_returns);
+    const nPts = config.frontier_points || 50;
+    const step = (maxRet - minRet) / Math.max(1, nPts - 1);
+    const frontier = [];
+    for (let pi = 0; pi < nPts; pi++) {
+      const target = minRet + pi * step;
+      bestW = null; bestVar = Infinity;
+      for (let i = 0; i < iters; i++) {
+        const raw = optGenerateWeights(n, frontierRng, config.min_weight || 0, config.max_weight || 1, config.long_only !== false);
+        const w = optApplyConstraints(raw, stats.assets, config);
+        const ret = optPortReturn(w, stats.mean_returns);
+        if (ret >= target) {
+          const v = optPortVar(w, stats.cov_matrix);
+          if (v < bestVar) { bestVar = v; bestW = w; }
+        }
+      }
+      if (bestW) frontier.push(optMakePoint(bestW, stats.assets, stats, config));
+    }
+    frontier.sort((a, b) => a.volatility - b.volatility);
+
+    return {
+      return_stats: stats,
+      risk_free_rate: config.risk_free_rate || 0.04,
+      cash_weight: config.cash_weight || 0,
+      long_only: config.long_only !== false,
+      pinned_weights: config.pinned_weights || {},
+      current_weights: config.current_weights || {},
+      min_variance: minVar,
+      max_sharpe: maxSharpe,
+      risk_parity: riskParity,
+      target_return_portfolio: targetRetPt,
+      target_volatility_portfolio: targetVolPt,
+      frontier,
+      warnings,
+    };
+  }
+
+  function optDisplayResult(r) {
+    if (!r || !r.return_stats) { alert('No result.'); return; }
+    const stats = r.return_stats;
+    const fmtPct = v => (v >= 0 ? '+' : '') + (v * 100).toFixed(2) + '%';
+    const fmtPctU = v => (v * 100).toFixed(2) + '%';
+
+    // Stats summary
+    const summaryDiv = document.getElementById('opt-stats-summary');
+    summaryDiv.innerHTML = `
+      <div class="ev-metric"><span class="metric-label">Observations</span><span class="metric-value">${stats.observation_count}</span></div>
+      <div class="ev-metric"><span class="metric-label">Assets</span><span class="metric-value">${stats.assets.join(', ')}</span></div>
+      <div class="ev-metric"><span class="metric-label">Risk-Free Rate</span><span class="metric-value">${fmtPctU(r.risk_free_rate)}</span></div>
+    `;
+
+    // Stats table
+    const statsTbody = document.getElementById('opt-stats-tbody');
+    statsTbody.innerHTML = stats.assets.map((a, i) =>
+      `<tr><td>${escHtml(a)}</td><td>${fmtPct(stats.mean_returns[i])}</td><td>${fmtPctU(stats.volatilities[i])}</td></tr>`
+    ).join('');
+
+    // Correlation matrix
+    const corrThead = document.getElementById('opt-corr-thead');
+    corrThead.innerHTML = '<tr><th></th>' + stats.assets.map(a => `<th>${escHtml(a)}</th>`).join('') + '</tr>';
+    const corrTbody = document.getElementById('opt-corr-tbody');
+    corrTbody.innerHTML = stats.assets.map((a, i) =>
+      `<tr><td><strong>${escHtml(a)}</strong></td>${stats.corr_matrix[i].map(v => `<td>${v.toFixed(3)}</td>`).join('')}</tr>`
+    ).join('');
+
+    // Optimal portfolios
+    const portDiv = document.getElementById('opt-portfolios');
+    const portfolios = [
+      { name: 'Minimum Variance', data: r.min_variance },
+      { name: 'Maximum Sharpe', data: r.max_sharpe },
+      { name: 'Risk Parity', data: r.risk_parity },
+      { name: 'Target Return', data: r.target_return_portfolio },
+      { name: 'Target Volatility', data: r.target_volatility_portfolio },
+    ].filter(p => p.data);
+
+    portDiv.innerHTML = portfolios.map(p => {
+      const d = p.data;
+      const wRows = Object.entries(d.weights).map(([a, w]) => `<tr><td>${escHtml(a)}</td><td>${fmtPctU(w)}</td><td>${fmtPctU(d.risk_contribution[a] || 0)}</td></tr>`).join('');
+      return `<div class="stress-scenario">
+        <h3>${escHtml(p.name)}</h3>
+        <div class="stress-summary">
+          <div class="stress-metric"><span class="metric-label">Return</span><span class="metric-value">${fmtPct(d.expected_return)}</span></div>
+          <div class="stress-metric"><span class="metric-label">Volatility</span><span class="metric-value">${fmtPctU(d.volatility)}</span></div>
+          <div class="stress-metric"><span class="metric-label">Sharpe</span><span class="metric-value">${d.sharpe.toFixed(3)}</span></div>
+          <div class="stress-metric"><span class="metric-label">Turnover</span><span class="metric-value">${fmtPctU(d.turnover)}</span></div>
+        </div>
+        <table class="data-table" style="margin-top:8px"><thead><tr><th>Asset</th><th>Weight</th><th>Risk Contrib</th></tr></thead><tbody>${wRows}</tbody></table>
+      </div>`;
+    }).join('');
+
+    // Efficient frontier
+    if (r.frontier && r.frontier.length) {
+      const fTbody = document.getElementById('opt-frontier-tbody');
+      fTbody.innerHTML = r.frontier.map((pt, i) =>
+        `<tr><td>${i + 1}</td><td>${fmtPct(pt.expected_return)}</td><td>${fmtPctU(pt.volatility)}</td><td>${pt.sharpe.toFixed(3)}</td></tr>`
+      ).join('');
+
+      // Frontier chart (ASCII)
+      const chartDiv = document.getElementById('opt-frontier-chart');
+      const rets = r.frontier.map(p => p.expected_return);
+      const vols = r.frontier.map(p => p.volatility);
+      const minV = Math.min(...vols), maxV = Math.max(...vols);
+      const minR = Math.min(...rets), maxR = Math.max(...rets);
+      const barW = 50;
+      const vRange = maxV - minV || 1;
+      let html = '<div style="font-family:var(--font-mono);font-size:10px;line-height:1.3;overflow-x:auto">';
+      for (let i = 0; i < r.frontier.length; i += Math.max(1, Math.floor(r.frontier.length / 25))) {
+        const pt = r.frontier[i];
+        const barLen = Math.round(((pt.volatility - minV) / vRange) * barW);
+        const bar = '█'.repeat(barLen) + '░'.repeat(barW - barLen);
+        html += `<div>Ret:${fmtPct(pt.expected_return)} <span style="color:var(--accent)">${bar}</span> Vol:${fmtPctU(pt.volatility)} Sharpe:${pt.sharpe.toFixed(3)}</div>`;
+      }
+      html += '</div>';
+      chartDiv.innerHTML = html;
+    }
+
+    // Warnings
+    const warnPanel = document.getElementById('opt-warnings-panel');
+    const warnDiv = document.getElementById('opt-warnings');
+    if (r.warnings && r.warnings.length) {
+      warnPanel.style.display = '';
+      warnDiv.innerHTML = r.warnings.map(w => `<div class="blocker-item">${escHtml(w)}</div>`).join('');
+    } else {
+      warnPanel.style.display = 'none';
+    }
+  }
+
+  function runOptimizer() {
+    const editor = document.getElementById('opt-editor');
+    let data;
+    try { data = JSON.parse(editor.value); } catch (e) { alert('Invalid JSON: ' + e.message); return; }
+    const config = {
+      risk_free_rate: data.risk_free_rate || 0.04,
+      min_weight: data.min_weight || 0,
+      max_weight: data.max_weight || 1,
+      max_single_position: data.max_single_position || 1,
+      cash_weight: data.cash_weight || 0,
+      long_only: data.long_only !== false,
+      pinned_weights: data.pinned_weights || {},
+      current_weights: {},
+      target_return: data.target_return,
+      target_volatility: data.target_volatility,
+      frontier_points: data.frontier_points || 30,
+      seed: data.seed || 42,
+      search_iterations: data.search_iterations || 5000,
+    };
+    // Parse current_weights (dict or array)
+    if (data.current_weights) {
+      if (Array.isArray(data.current_weights)) {
+        for (const item of data.current_weights) config.current_weights[item.asset] = item.weight;
+      } else {
+        config.current_weights = { ...data.current_weights };
+      }
+    }
+    // Also accept weights from MC format
+    if (!Object.keys(config.current_weights).length && data.weights) {
+      for (const item of (data.weights || [])) {
+        if (item.asset) config.current_weights[item.asset] = item.weight;
+      }
+    }
+    const priceSeries = data.price_series;
+    if (!priceSeries || !Object.keys(priceSeries).length) { alert('No price_series found.'); return; }
+    const result = optRunOptimizer(config, priceSeries);
+    window._lastOptResult = result;
+    optDisplayResult(result);
+  }
+
+  const OPT_EXAMPLE = {
+    risk_free_rate: 0.04,
+    min_weight: 0.0,
+    max_weight: 0.50,
+    max_single_position: 0.50,
+    cash_weight: 0.0,
+    long_only: true,
+    current_weights: { AAPL: 0.40, MSFT: 0.35, TSLA: 0.25 },
+    target_return: 0.10,
+    target_volatility: 0.20,
+    frontier_points: 30,
+    seed: 42,
+    search_iterations: 5000,
+    price_series: {
+      AAPL: [
+        {date:'2025-07-01',close:170},{date:'2025-07-02',close:172},{date:'2025-07-03',close:171},
+        {date:'2025-07-07',close:174},{date:'2025-07-08',close:176},{date:'2025-07-09',close:175},
+        {date:'2025-07-10',close:178},{date:'2025-07-11',close:177},{date:'2025-07-14',close:179},
+        {date:'2025-07-15',close:180},{date:'2025-07-16',close:182},{date:'2025-07-17',close:181},
+        {date:'2025-07-18',close:183},{date:'2025-07-21',close:185},{date:'2025-07-22',close:184},
+        {date:'2025-07-23',close:186},{date:'2025-07-24',close:188},{date:'2025-07-25',close:187},
+        {date:'2025-07-28',close:189},{date:'2025-07-29',close:190},{date:'2025-07-30',close:192},
+        {date:'2025-07-31',close:191},{date:'2025-08-01',close:193},{date:'2025-08-04',close:195},
+        {date:'2025-08-05',close:194},{date:'2025-08-06',close:196},{date:'2025-08-07',close:198},
+        {date:'2025-08-08',close:197},{date:'2025-08-11',close:199},{date:'2025-08-12',close:200}
+      ],
+      MSFT: [
+        {date:'2025-07-01',close:360},{date:'2025-07-02',close:362},{date:'2025-07-03',close:361},
+        {date:'2025-07-07',close:364},{date:'2025-07-08',close:366},{date:'2025-07-09',close:365},
+        {date:'2025-07-10',close:368},{date:'2025-07-11',close:367},{date:'2025-07-14',close:369},
+        {date:'2025-07-15',close:370},{date:'2025-07-16',close:372},{date:'2025-07-17',close:371},
+        {date:'2025-07-18',close:373},{date:'2025-07-21',close:375},{date:'2025-07-22',close:374},
+        {date:'2025-07-23',close:376},{date:'2025-07-24',close:378},{date:'2025-07-25',close:377},
+        {date:'2025-07-28',close:379},{date:'2025-07-29',close:380},{date:'2025-07-30',close:382},
+        {date:'2025-07-31',close:381},{date:'2025-08-01',close:383},{date:'2025-08-04',close:385},
+        {date:'2025-08-05',close:384},{date:'2025-08-06',close:386},{date:'2025-08-07',close:388},
+        {date:'2025-08-08',close:387},{date:'2025-08-11',close:389},{date:'2025-08-12',close:390}
+      ],
+      TSLA: [
+        {date:'2025-07-01',close:240},{date:'2025-07-02',close:244},{date:'2025-07-03',close:238},
+        {date:'2025-07-07',close:250},{date:'2025-07-08',close:246},{date:'2025-07-09',close:252},
+        {date:'2025-07-10',close:248},{date:'2025-07-11',close:255},{date:'2025-07-14',close:251},
+        {date:'2025-07-15',close:258},{date:'2025-07-16',close:254},{date:'2025-07-17',close:260},
+        {date:'2025-07-18',close:256},{date:'2025-07-21',close:263},{date:'2025-07-22',close:259},
+        {date:'2025-07-23',close:265},{date:'2025-07-24',close:261},{date:'2025-07-25',close:268},
+        {date:'2025-07-28',close:264},{date:'2025-07-29',close:270},{date:'2025-07-30',close:266},
+        {date:'2025-07-31',close:272},{date:'2025-08-01',close:268},{date:'2025-08-04',close:275},
+        {date:'2025-08-05',close:271},{date:'2025-08-06',close:278},{date:'2025-08-07',close:274},
+        {date:'2025-08-08',close:280},{date:'2025-08-11',close:276},{date:'2025-08-12',close:283}
+      ]
+    }
+  };
+
+  document.getElementById('btn-opt-load').addEventListener('click', () => {
+    document.getElementById('opt-editor').value = JSON.stringify(OPT_EXAMPLE, null, 2);
+    runOptimizer();
+  });
+  document.getElementById('btn-opt-run').addEventListener('click', runOptimizer);
+  document.getElementById('btn-opt-copy').addEventListener('click', () => {
+    if (window._lastOptResult) navigator.clipboard.writeText(JSON.stringify(window._lastOptResult, null, 2)).catch(() => {});
+  });
+
+  // Add optimizer example to gallery
+  if (typeof EXAMPLES !== 'undefined') {
+    EXAMPLES.optimizer = {
+      name: 'Portfolio Optimizer',
+      type: 'optimizer',
+      description: 'Deterministic portfolio optimization with min-variance, max-Sharpe, risk-parity, and efficient frontier. 3-asset example with 30 price observations.',
+      data: OPT_EXAMPLE,
+    };
+    // Add optimizer type routing
+    const origPopulate = populateExamples;
+    populateExamples = function() {
+      origPopulate();
+      // Patch optimizer example click
+      document.querySelectorAll('.example-card').forEach(card => {
+        if (card.querySelector('h3')?.textContent === 'Portfolio Optimizer' && !card._optPatched) {
+          card._optPatched = true;
+          card.addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            document.querySelector('[data-tab="optimizer"]').classList.add('active');
+            document.getElementById('optimizer').classList.add('active');
+            document.getElementById('opt-editor').value = JSON.stringify(OPT_EXAMPLE, null, 2);
+            runOptimizer();
+          });
+        }
+      });
+    };
+  }
+
+  // =====================================================================
   // Import & Scenario Builder
   // =====================================================================
 

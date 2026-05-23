@@ -4325,5 +4325,662 @@ class TestMonteCarloExampleFiles(unittest.TestCase):
         self.assertNotAlmostEqual(result.stress_shock_pct, 0.0)
 
 
+# =========================================================================
+# Portfolio Optimizer Tests
+# =========================================================================
+
+class TestOptimizerMathHelpers(unittest.TestCase):
+    """Test math helper functions."""
+
+    def test_log_returns(self):
+        from invest_signal_kit.optimizer import _log_returns
+        rets = _log_returns([100, 110, 105])
+        self.assertEqual(len(rets), 2)
+        self.assertAlmostEqual(rets[0], 0.09531, places=3)
+        self.assertAlmostEqual(rets[1], -0.04652, places=3)
+
+    def test_log_returns_empty(self):
+        from invest_signal_kit.optimizer import _log_returns
+        self.assertEqual(_log_returns([]), [])
+        self.assertEqual(_log_returns([100]), [])
+
+    def test_log_returns_zero_price(self):
+        from invest_signal_kit.optimizer import _log_returns
+        rets = _log_returns([0, 100, 50])
+        self.assertEqual(rets[0], 0.0)
+        self.assertAlmostEqual(rets[1], -0.693147, places=3)
+
+    def test_mean(self):
+        from invest_signal_kit.optimizer import _mean
+        self.assertAlmostEqual(_mean([1, 2, 3, 4, 5]), 3.0)
+        self.assertEqual(_mean([]), 0.0)
+
+    def test_variance(self):
+        from invest_signal_kit.optimizer import _variance
+        self.assertAlmostEqual(_variance([1, 2, 3, 4, 5]), 2.5)
+        self.assertEqual(_variance([5]), 0.0)
+        self.assertEqual(_variance([]), 0.0)
+
+    def test_std(self):
+        from invest_signal_kit.optimizer import _std
+        self.assertAlmostEqual(_std([1, 2, 3, 4, 5]), 1.5811, places=3)
+
+    def test_cov(self):
+        from invest_signal_kit.optimizer import _cov
+        xs = [1, 2, 3, 4, 5]
+        ys = [2, 4, 6, 8, 10]
+        self.assertAlmostEqual(_cov(xs, ys), 5.0)
+        self.assertEqual(_cov([1], [2]), 0.0)
+        self.assertEqual(_cov([], []), 0.0)
+
+    def test_portfolio_return(self):
+        from invest_signal_kit.optimizer import _portfolio_return
+        ret = _portfolio_return([0.5, 0.5], [0.10, 0.20])
+        self.assertAlmostEqual(ret, 0.15)
+
+    def test_portfolio_variance(self):
+        from invest_signal_kit.optimizer import _portfolio_variance
+        cov = [[0.04, 0.01], [0.01, 0.09]]
+        var = _portfolio_variance([0.5, 0.5], cov)
+        self.assertAlmostEqual(var, 0.0375)
+
+    def test_portfolio_vol(self):
+        from invest_signal_kit.optimizer import _portfolio_vol
+        cov = [[0.04, 0.01], [0.01, 0.09]]
+        vol = _portfolio_vol([0.5, 0.5], cov)
+        self.assertAlmostEqual(vol, 0.19365, places=3)
+
+    def test_portfolio_vol_negative_variance(self):
+        from invest_signal_kit.optimizer import _portfolio_vol
+        vol = _portfolio_vol([0.5, 0.5], [[-1, 0], [0, -1]])
+        self.assertEqual(vol, 0.0)
+
+    def test_sharpe(self):
+        from invest_signal_kit.optimizer import _sharpe
+        self.assertAlmostEqual(_sharpe(0.10, 0.20, 0.04), 0.3)
+        self.assertEqual(_sharpe(0.10, 0.0, 0.04), 0.0)
+
+    def test_turnover(self):
+        from invest_signal_kit.optimizer import _turnover
+        t = _turnover({"A": 0.6, "B": 0.4}, {"A": 0.5, "B": 0.5})
+        self.assertAlmostEqual(t, 0.2)
+
+    def test_turnover_missing_assets(self):
+        from invest_signal_kit.optimizer import _turnover
+        t = _turnover({"A": 1.0}, {"B": 1.0})
+        self.assertAlmostEqual(t, 2.0)
+
+    def test_risk_contribution(self):
+        from invest_signal_kit.optimizer import _risk_contribution, _portfolio_vol
+        cov = [[0.04, 0.01], [0.01, 0.09]]
+        rc = _risk_contribution([0.5, 0.5], cov)
+        self.assertEqual(len(rc), 2)
+        self.assertAlmostEqual(sum(rc), _portfolio_vol([0.5, 0.5], cov), places=5)
+
+    def test_risk_contribution_zero_vol(self):
+        from invest_signal_kit.optimizer import _risk_contribution
+        rc = _risk_contribution([0.5, 0.5], [[0, 0], [0, 0]])
+        self.assertEqual(rc, [0.0, 0.0])
+
+    def test_risk_contribution_fraction(self):
+        from invest_signal_kit.optimizer import _risk_contribution_fraction
+        cov = [[0.04, 0.01], [0.01, 0.09]]
+        rcf = _risk_contribution_fraction([0.5, 0.5], cov)
+        self.assertEqual(len(rcf), 2)
+        self.assertAlmostEqual(sum(rcf), 1.0, places=5)
+        for f in rcf:
+            self.assertGreaterEqual(f, 0.0)
+
+    def test_risk_contribution_fraction_zero_vol(self):
+        from invest_signal_kit.optimizer import _risk_contribution_fraction
+        rcf = _risk_contribution_fraction([0.5, 0.5], [[0, 0], [0, 0]])
+        self.assertAlmostEqual(rcf[0], 0.5)
+        self.assertAlmostEqual(rcf[1], 0.5)
+
+
+class TestComputeReturnStats(unittest.TestCase):
+    """Test return statistics computation."""
+
+    def _price_series(self):
+        """Simple 2-asset price series."""
+        return {
+            "AAPL": [
+                {"date": "2025-07-01", "close": 100},
+                {"date": "2025-07-02", "close": 102},
+                {"date": "2025-07-03", "close": 101},
+                {"date": "2025-07-04", "close": 105},
+                {"date": "2025-07-05", "close": 103},
+            ],
+            "MSFT": [
+                {"date": "2025-07-01", "close": 200},
+                {"date": "2025-07-02", "close": 204},
+                {"date": "2025-07-03", "close": 202},
+                {"date": "2025-07-04", "close": 208},
+                {"date": "2025-07-05", "close": 206},
+            ],
+        }
+
+    def test_basic_computation(self):
+        from invest_signal_kit.optimizer import compute_return_stats
+        stats = compute_return_stats(self._price_series())
+        self.assertEqual(stats.assets, ["AAPL", "MSFT"])
+        self.assertEqual(len(stats.mean_returns), 2)
+        self.assertEqual(len(stats.volatilities), 2)
+        self.assertEqual(len(stats.cov_matrix), 2)
+        self.assertEqual(len(stats.corr_matrix), 2)
+        self.assertEqual(stats.observation_count, 4)
+
+    def test_annualized(self):
+        from invest_signal_kit.optimizer import compute_return_stats
+        stats = compute_return_stats(self._price_series())
+        # Annualized means should be daily * 252
+        for vol in stats.volatilities:
+            self.assertGreater(vol, 0)
+
+    def test_correlation_diagonal(self):
+        from invest_signal_kit.optimizer import compute_return_stats
+        stats = compute_return_stats(self._price_series())
+        self.assertAlmostEqual(stats.corr_matrix[0][0], 1.0, places=3)
+        self.assertAlmostEqual(stats.corr_matrix[1][1], 1.0, places=3)
+
+    def test_empty_price_series(self):
+        from invest_signal_kit.optimizer import compute_return_stats
+        stats = compute_return_stats({})
+        self.assertEqual(stats.assets, [])
+
+    def test_single_observation(self):
+        from invest_signal_kit.optimizer import compute_return_stats
+        stats = compute_return_stats({"A": [{"date": "2025-01-01", "close": 100}]})
+        self.assertEqual(stats.observation_count, 0)  # need 2+ for returns
+
+
+class TestWeightGeneration(unittest.TestCase):
+    """Test weight generation and constraint application."""
+
+    def test_generate_weights_sum_to_one(self):
+        import random
+        from invest_signal_kit.optimizer import _generate_random_weights
+        rng = random.Random(42)
+        w = _generate_random_weights(3, rng, 0.0, 1.0, True)
+        self.assertAlmostEqual(sum(w), 1.0, places=5)
+        self.assertEqual(len(w), 3)
+
+    def test_generate_weights_deterministic(self):
+        import random
+        from invest_signal_kit.optimizer import _generate_random_weights
+        rng1 = random.Random(42)
+        rng2 = random.Random(42)
+        w1 = _generate_random_weights(3, rng1, 0.0, 1.0, True)
+        w2 = _generate_random_weights(3, rng2, 0.0, 1.0, True)
+        self.assertEqual(w1, w2)
+
+    def test_generate_weights_empty(self):
+        import random
+        from invest_signal_kit.optimizer import _generate_random_weights
+        rng = random.Random(42)
+        self.assertEqual(_generate_random_weights(0, rng, 0.0, 1.0, True), [])
+
+    def test_apply_constraints_pinned(self):
+        from invest_signal_kit.optimizer import _apply_constraints, OptimizerConfig
+        config = OptimizerConfig(pinned_weights={"B": 0.3}, cash_weight=0.0)
+        w = _apply_constraints([0.4, 0.3, 0.3], ["A", "B", "C"], config)
+        self.assertAlmostEqual(w[1], 0.3)  # B is pinned
+
+    def test_apply_constraints_cash(self):
+        from invest_signal_kit.optimizer import _apply_constraints, OptimizerConfig
+        config = OptimizerConfig(cash_weight=0.1)
+        w = _apply_constraints([0.5, 0.5], ["A", "B"], config)
+        # Free weights should sum to 0.9
+        self.assertAlmostEqual(sum(w), 0.9, places=2)
+
+    def test_apply_constraints_long_only(self):
+        from invest_signal_kit.optimizer import _apply_constraints, OptimizerConfig
+        config = OptimizerConfig(long_only=True, min_weight=0.0)
+        w = _apply_constraints([0.5, -0.2, 0.7], ["A", "B", "C"], config)
+        for weight in w:
+            self.assertGreaterEqual(weight, -0.001)  # small float tolerance
+
+    def test_weights_to_dict(self):
+        from invest_signal_kit.optimizer import _weights_to_dict
+        d = _weights_to_dict([0.3, 0.7], ["A", "B"])
+        self.assertIn("A", d)
+        self.assertIn("B", d)
+        self.assertAlmostEqual(d["A"] + d["B"], 1.0, places=4)
+
+
+class TestOptimizerAlgorithms(unittest.TestCase):
+    """Test each optimization algorithm with example data."""
+
+    @classmethod
+    def setUpClass(cls):
+        from invest_signal_kit.optimizer import compute_return_stats, OptimizerConfig
+        cls.price_series = json.loads(
+            (EXAMPLES / "optimizer_config.json").read_text()
+        )["price_series"]
+        cls.stats = compute_return_stats(cls.price_series)
+        cls.config = OptimizerConfig(
+            risk_free_rate=0.04, max_weight=0.50,
+            current_weights={"AAPL": 0.40, "MSFT": 0.35, "TSLA": 0.25},
+            seed=42, search_iterations=1000, frontier_points=10,
+        )
+
+    def test_min_variance(self):
+        import random
+        from invest_signal_kit.optimizer import _optimize_min_variance
+        rng = random.Random(42)
+        pt = _optimize_min_variance(self.stats, self.config, rng)
+        self.assertIn("AAPL", pt.weights)
+        self.assertGreater(pt.volatility, 0)
+        self.assertGreater(pt.expected_return, 0)
+
+    def test_max_sharpe(self):
+        import random
+        from invest_signal_kit.optimizer import _optimize_max_sharpe
+        rng = random.Random(42)
+        pt = _optimize_max_sharpe(self.stats, self.config, rng)
+        self.assertIn("AAPL", pt.weights)
+        self.assertGreater(pt.sharpe, 0)
+
+    def test_risk_parity(self):
+        from invest_signal_kit.optimizer import _optimize_risk_parity
+        pt = _optimize_risk_parity(self.stats, self.config)
+        self.assertIn("AAPL", pt.weights)
+        # Risk contributions should be roughly equal
+        rcs = list(pt.risk_contribution.values())
+        if len(rcs) > 1:
+            self.assertAlmostEqual(max(rcs) - min(rcs), 0.0, delta=0.15)
+
+    def test_target_return(self):
+        import random
+        from invest_signal_kit.optimizer import _optimize_target_return
+        rng = random.Random(42)
+        pt = _optimize_target_return(self.stats, self.config, rng, 0.05)
+        self.assertIsNotNone(pt)
+        self.assertGreaterEqual(pt.expected_return, 0.05 - 0.01)  # small tolerance
+
+    def test_target_return_impossible(self):
+        import random
+        from invest_signal_kit.optimizer import _optimize_target_return
+        rng = random.Random(42)
+        pt = _optimize_target_return(self.stats, self.config, rng, 100.0)
+        self.assertIsNone(pt)
+
+    def test_target_volatility(self):
+        import random
+        from invest_signal_kit.optimizer import _optimize_target_volatility
+        rng = random.Random(42)
+        pt = _optimize_target_volatility(self.stats, self.config, rng, 0.50)
+        self.assertIsNotNone(pt)
+        self.assertLessEqual(pt.volatility, 0.50 + 0.01)
+
+    def test_target_volatility_impossible(self):
+        import random
+        from invest_signal_kit.optimizer import _optimize_target_volatility
+        rng = random.Random(42)
+        pt = _optimize_target_volatility(self.stats, self.config, rng, 0.001)
+        self.assertIsNone(pt)
+
+
+class TestOptimizerFrontier(unittest.TestCase):
+    """Test efficient frontier generation."""
+
+    def test_frontier_generation(self):
+        import random
+        from invest_signal_kit.optimizer import compute_return_stats, _generate_frontier, OptimizerConfig
+        data = json.loads((EXAMPLES / "optimizer_config.json").read_text())
+        stats = compute_return_stats(data["price_series"])
+        config = OptimizerConfig(seed=42, search_iterations=500, frontier_points=5)
+        rng = random.Random(43)
+        frontier = _generate_frontier(stats, config, rng)
+        self.assertGreater(len(frontier), 0)
+        # Frontier should be sorted by volatility
+        for i in range(1, len(frontier)):
+            self.assertGreaterEqual(frontier[i].volatility, frontier[i - 1].volatility)
+
+    def test_frontier_empty_assets(self):
+        import random
+        from invest_signal_kit.optimizer import compute_return_stats, _generate_frontier, OptimizerConfig
+        stats = compute_return_stats({})
+        config = OptimizerConfig()
+        rng = random.Random(42)
+        frontier = _generate_frontier(stats, config, rng)
+        self.assertEqual(frontier, [])
+
+
+class TestRunOptimizer(unittest.TestCase):
+    """Test the run_optimizer entry point."""
+
+    def test_basic_run(self):
+        from invest_signal_kit.optimizer import run_optimizer, OptimizerConfig
+        data = json.loads((EXAMPLES / "optimizer_config.json").read_text())
+        config = OptimizerConfig(seed=42, search_iterations=500, frontier_points=5)
+        result = run_optimizer(config, data["price_series"])
+        self.assertIsNotNone(result.min_variance)
+        self.assertIsNotNone(result.max_sharpe)
+        self.assertIsNotNone(result.risk_parity)
+        self.assertGreater(len(result.frontier), 0)
+        self.assertEqual(result.risk_free_rate, 0.04)
+
+    def test_target_return_and_vol(self):
+        from invest_signal_kit.optimizer import run_optimizer, OptimizerConfig
+        data = json.loads((EXAMPLES / "optimizer_config.json").read_text())
+        config = OptimizerConfig(
+            seed=42, search_iterations=500, frontier_points=5,
+            target_return=0.05, target_volatility=0.50,
+        )
+        result = run_optimizer(config, data["price_series"])
+        self.assertIsNotNone(result.target_return_portfolio)
+        self.assertIsNotNone(result.target_volatility_portfolio)
+
+    def test_empty_price_series(self):
+        from invest_signal_kit.optimizer import run_optimizer, OptimizerConfig
+        result = run_optimizer(OptimizerConfig(), {})
+        self.assertIn("No assets", result.warnings[0])
+
+    def test_single_observation(self):
+        from invest_signal_kit.optimizer import run_optimizer, OptimizerConfig
+        result = run_optimizer(OptimizerConfig(), {"A": [{"date": "2025-01-01", "close": 100}]})
+        self.assertTrue(any("Fewer than 2" in w for w in result.warnings))
+
+
+class TestOptimizerDeterminism(unittest.TestCase):
+    """Test that same seed produces identical results."""
+
+    def test_same_seed_same_result(self):
+        from invest_signal_kit.optimizer import run_optimizer, OptimizerConfig, _result_to_dict
+        data = json.loads((EXAMPLES / "optimizer_config.json").read_text())
+        config = OptimizerConfig(seed=42, search_iterations=500, frontier_points=5)
+        r1 = _result_to_dict(run_optimizer(config, data["price_series"]))
+        r2 = _result_to_dict(run_optimizer(config, data["price_series"]))
+        self.assertEqual(r1, r2)
+
+    def test_different_seed_different_result(self):
+        from invest_signal_kit.optimizer import run_optimizer, OptimizerConfig, _result_to_dict
+        data = json.loads((EXAMPLES / "optimizer_config.json").read_text())
+        c1 = OptimizerConfig(seed=42, search_iterations=500, frontier_points=5)
+        c2 = OptimizerConfig(seed=99, search_iterations=500, frontier_points=5)
+        r1 = _result_to_dict(run_optimizer(c1, data["price_series"]))
+        r2 = _result_to_dict(run_optimizer(c2, data["price_series"]))
+        # Min-variance weights should differ
+        self.assertNotEqual(
+            r1["min_variance"]["weights"],
+            r2["min_variance"]["weights"],
+        )
+
+
+class TestOptimizerConfigLoader(unittest.TestCase):
+    """Test config loading from various formats."""
+
+    def test_load_optimizer_config(self):
+        from invest_signal_kit.optimizer import load_optimizer_config
+        data = json.loads((EXAMPLES / "optimizer_config.json").read_text())
+        config, series = load_optimizer_config(data)
+        self.assertEqual(config.risk_free_rate, 0.04)
+        self.assertEqual(config.max_weight, 0.50)
+        self.assertEqual(config.seed, 42)
+        self.assertEqual(config.search_iterations, 5000)
+        self.assertIn("AAPL", series)
+        self.assertEqual(config.current_weights["AAPL"], 0.40)
+
+    def test_load_from_scenario_format(self):
+        from invest_signal_kit.optimizer import load_optimizer_config
+        data = json.loads((EXAMPLES / "generated_scenario.json").read_text())
+        config, series = load_optimizer_config(data)
+        self.assertIn("AAPL", series)
+        self.assertGreater(len(series["AAPL"]), 0)
+
+    def test_load_from_monte_carlo_format(self):
+        from invest_signal_kit.optimizer import load_optimizer_config
+        data = json.loads((EXAMPLES / "monte_carlo_config.json").read_text())
+        config, series = load_optimizer_config(data)
+        self.assertIn("AAPL", series)
+
+    def test_load_defaults(self):
+        from invest_signal_kit.optimizer import load_optimizer_config
+        config, series = load_optimizer_config({})
+        self.assertEqual(config.risk_free_rate, 0.04)
+        self.assertEqual(config.long_only, True)
+        self.assertEqual(series, {})
+
+    def test_load_target_return(self):
+        from invest_signal_kit.optimizer import load_optimizer_config
+        config, _ = load_optimizer_config({"target_return": 0.10, "target_volatility": 0.15})
+        self.assertEqual(config.target_return, 0.10)
+        self.assertEqual(config.target_volatility, 0.15)
+
+    def test_load_current_weights_dict(self):
+        from invest_signal_kit.optimizer import load_optimizer_config
+        config, _ = load_optimizer_config({"current_weights": {"A": 0.5, "B": 0.5}})
+        self.assertEqual(config.current_weights["A"], 0.5)
+
+    def test_run_optimizer_from_dict(self):
+        from invest_signal_kit.optimizer import run_optimizer_from_dict
+        data = json.loads((EXAMPLES / "optimizer_config.json").read_text())
+        data["search_iterations"] = 500
+        data["frontier_points"] = 5
+        result = run_optimizer_from_dict(data)
+        self.assertIn("min_variance", result)
+        self.assertIn("max_sharpe", result)
+        self.assertIn("frontier", result)
+
+
+class TestOptimizerMarkdown(unittest.TestCase):
+    """Test Markdown rendering."""
+
+    def test_render_contains_sections(self):
+        from invest_signal_kit.optimizer import run_optimizer, render_optimizer_markdown, OptimizerConfig
+        data = json.loads((EXAMPLES / "optimizer_config.json").read_text())
+        config = OptimizerConfig(seed=42, search_iterations=500, frontier_points=5)
+        result = run_optimizer(config, data["price_series"])
+        md = render_optimizer_markdown(result)
+        self.assertIn("# Portfolio Optimizer Report", md)
+        self.assertIn("Return Statistics", md)
+        self.assertIn("Correlation Matrix", md)
+        self.assertIn("Optimal Portfolios", md)
+        self.assertIn("Minimum Variance", md)
+        self.assertIn("Maximum Sharpe", md)
+        self.assertIn("Risk Parity", md)
+        self.assertIn("Efficient Frontier", md)
+        self.assertIn("Not investment advice", md)
+
+    def test_render_with_target(self):
+        from invest_signal_kit.optimizer import run_optimizer, render_optimizer_markdown, OptimizerConfig
+        data = json.loads((EXAMPLES / "optimizer_config.json").read_text())
+        config = OptimizerConfig(
+            seed=42, search_iterations=500, frontier_points=5,
+            target_return=0.05, target_volatility=0.50,
+        )
+        result = run_optimizer(config, data["price_series"])
+        md = render_optimizer_markdown(result)
+        self.assertIn("Target Return", md)
+        self.assertIn("Target Volatility", md)
+
+    def test_render_with_warnings(self):
+        from invest_signal_kit.optimizer import run_optimizer, render_optimizer_markdown, OptimizerConfig
+        result = run_optimizer(OptimizerConfig(), {"A": [{"date": "2025-01-01", "close": 100}]})
+        md = render_optimizer_markdown(result)
+        self.assertIn("Warnings", md)
+
+    def test_render_turnover(self):
+        from invest_signal_kit.optimizer import run_optimizer, render_optimizer_markdown, OptimizerConfig
+        data = json.loads((EXAMPLES / "optimizer_config.json").read_text())
+        config = OptimizerConfig(
+            seed=42, search_iterations=500, frontier_points=5,
+            current_weights={"AAPL": 0.40, "MSFT": 0.35, "TSLA": 0.25},
+        )
+        result = run_optimizer(config, data["price_series"])
+        md = render_optimizer_markdown(result)
+        self.assertIn("Turnover", md)
+
+
+class TestOptimizerCLI(unittest.TestCase):
+    """Test CLI optimize-portfolio command."""
+
+    def test_json_output(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["optimize-portfolio", str(EXAMPLES / "optimizer_config.json")])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        data = json.loads(captured.getvalue())
+        self.assertIn("min_variance", data)
+        self.assertIn("max_sharpe", data)
+        self.assertIn("risk_parity", data)
+        self.assertIn("frontier", data)
+
+    def test_markdown_output(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["optimize-portfolio", str(EXAMPLES / "optimizer_config.json"), "--format", "markdown"])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        self.assertIn("# Portfolio Optimizer Report", captured.getvalue())
+        self.assertIn("Not investment advice", captured.getvalue())
+
+    def test_writes_file(self):
+        from invest_signal_kit.cli import main
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
+            outpath = f.name
+        try:
+            ret = main(["optimize-portfolio", str(EXAMPLES / "optimizer_config.json"), "-o", outpath])
+            self.assertEqual(ret, 0)
+            data = json.loads(Path(outpath).read_text())
+            self.assertIn("min_variance", data)
+        finally:
+            os.unlink(outpath)
+
+    def test_missing_file(self):
+        from invest_signal_kit.cli import main
+        ret = main(["optimize-portfolio", "/tmp/no_such_optimizer_file.json"])
+        self.assertEqual(ret, 1)
+
+    def test_invalid_json(self):
+        from invest_signal_kit.cli import main
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
+            f.write("{bad json")
+            f.flush()
+            path = f.name
+        try:
+            ret = main(["optimize-portfolio", path])
+            self.assertNotEqual(ret, 0)
+        finally:
+            os.unlink(path)
+
+    def test_cli_overrides(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main([
+                "optimize-portfolio", str(EXAMPLES / "optimizer_config.json"),
+                "--risk-free-rate", "0.05",
+                "--max-weight", "0.40",
+                "--seed", "99",
+            ])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        data = json.loads(captured.getvalue())
+        self.assertEqual(data["risk_free_rate"], 0.05)
+
+    def test_from_scenario(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["optimize-portfolio", str(EXAMPLES / "generated_scenario.json")])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        data = json.loads(captured.getvalue())
+        self.assertIn("min_variance", data)
+
+    def test_from_monte_carlo(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["optimize-portfolio", str(EXAMPLES / "monte_carlo_config.json")])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        data = json.loads(captured.getvalue())
+        self.assertIn("min_variance", data)
+
+
+class TestOptimizerExampleFile(unittest.TestCase):
+    """Test that optimizer_config.json example loads and runs correctly."""
+
+    def test_example_loads(self):
+        from invest_signal_kit.optimizer import load_optimizer_config
+        data = json.loads((EXAMPLES / "optimizer_config.json").read_text())
+        config, series = load_optimizer_config(data)
+        self.assertEqual(len(series), 3)
+        self.assertIn("AAPL", series)
+        self.assertIn("MSFT", series)
+        self.assertIn("TSLA", series)
+
+    def test_example_runs(self):
+        from invest_signal_kit.optimizer import run_optimizer_from_dict
+        data = json.loads((EXAMPLES / "optimizer_config.json").read_text())
+        data["search_iterations"] = 500
+        data["frontier_points"] = 5
+        result = run_optimizer_from_dict(data)
+        self.assertIn("min_variance", result)
+        self.assertIn("frontier", result)
+        # Should have warnings or no warnings, but not crash
+        self.assertIsInstance(result["warnings"], list)
+
+    def test_example_weights_sum_to_one(self):
+        from invest_signal_kit.optimizer import run_optimizer, load_optimizer_config
+        data = json.loads((EXAMPLES / "optimizer_config.json").read_text())
+        config, series = load_optimizer_config(data)
+        config.search_iterations = 500
+        config.frontier_points = 5
+        result = run_optimizer(config, series)
+        for pt in [result.min_variance, result.max_sharpe, result.risk_parity]:
+            if pt:
+                total = sum(pt.weights.values())
+                self.assertAlmostEqual(total, 1.0, delta=0.05)
+
+    def test_example_cli_json(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["optimize-portfolio", str(EXAMPLES / "optimizer_config.json")])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        data = json.loads(captured.getvalue())
+        self.assertIn("return_stats", data)
+
+    def test_example_cli_markdown(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["optimize-portfolio", str(EXAMPLES / "optimizer_config.json"), "--format", "md"])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        md = captured.getvalue()
+        self.assertIn("Portfolio Optimizer Report", md)
+        self.assertIn("Return Statistics", md)
+
+
 if __name__ == "__main__":
     unittest.main()

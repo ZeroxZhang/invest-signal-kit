@@ -151,6 +151,31 @@ def main(argv=None) -> int:
     p_mc.add_argument("--drawdown-breach", type=float, default=None,
                       help="Drawdown breach threshold %% (default: from config or 20)")
 
+    # --- optimize-portfolio ---
+    p_opt = sub.add_parser("optimize-portfolio", help="Run portfolio optimizer / efficient frontier")
+    p_opt.add_argument("file", help="Path to optimizer config, scenario, or Monte Carlo config JSON")
+    p_opt.add_argument("--output", "-o", help="Output file path (default: stdout)")
+    p_opt.add_argument("--format", choices=["json", "markdown", "md"], default="json",
+                       help="Output format (default: json)")
+    p_opt.add_argument("--risk-free-rate", type=float, default=None,
+                       help="Annualized risk-free rate (default: 0.04)")
+    p_opt.add_argument("--max-weight", type=float, default=None,
+                       help="Max weight per asset (default: 1.0)")
+    p_opt.add_argument("--min-weight", type=float, default=None,
+                       help="Min weight per asset (default: 0.0)")
+    p_opt.add_argument("--cash-weight", type=float, default=None,
+                       help="Cash allocation fraction 0-1 (default: 0)")
+    p_opt.add_argument("--target-return", type=float, default=None,
+                       help="Target annualized return (default: None)")
+    p_opt.add_argument("--target-volatility", type=float, default=None,
+                       help="Target annualized volatility (default: None)")
+    p_opt.add_argument("--frontier-points", type=int, default=None,
+                       help="Number of efficient frontier points (default: 50)")
+    p_opt.add_argument("--seed", type=int, default=None,
+                       help="Random seed (default: 42)")
+    p_opt.add_argument("--current-weights", default=None,
+                       help='Current weights as "AAPL:0.4,MSFT:0.35,TSLA:0.25"')
+
     # --- serve ---
     p_serve = sub.add_parser("serve", help="Serve the web UI locally")
     p_serve.add_argument("--port", type=int, default=8765, help="Port to listen on (default: 8765)")
@@ -160,6 +185,9 @@ def main(argv=None) -> int:
 
     if args.command == "monte-carlo":
         return _cmd_monte_carlo(args)
+
+    if args.command == "optimize-portfolio":
+        return _cmd_optimize_portfolio(args)
 
     if args.command == "serve":
         return _cmd_serve(args.port, args.bind)
@@ -963,6 +991,80 @@ def _cmd_monte_carlo(args) -> int:
 
     if fmt in ("markdown", "md"):
         out = render_monte_carlo_markdown(result)
+    else:
+        out = json.dumps(_result_to_dict(result), indent=2, ensure_ascii=False)
+
+    if output:
+        Path(output).write_text(out, encoding="utf-8")
+        print(f"Written to {output}")
+    else:
+        print(out)
+    return 0
+
+
+def _cmd_optimize_portfolio(args) -> int:
+    """Run portfolio optimizer / efficient frontier."""
+    from .optimizer import (
+        load_optimizer_config,
+        run_optimizer,
+        render_optimizer_markdown,
+        _result_to_dict,
+    )
+
+    file_path = args.file
+    output = getattr(args, "output", None)
+    fmt = getattr(args, "format", "json")
+
+    try:
+        text = Path(file_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        print(f"Error: Invalid JSON: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        config, price_series = load_optimizer_config(data)
+    except (ValueError, KeyError, TypeError) as exc:
+        print(f"Error loading optimizer config: {exc}", file=sys.stderr)
+        return 1
+
+    # CLI overrides
+    if args.risk_free_rate is not None:
+        config.risk_free_rate = args.risk_free_rate
+    if args.max_weight is not None:
+        config.max_weight = args.max_weight
+    if args.min_weight is not None:
+        config.min_weight = args.min_weight
+    if args.cash_weight is not None:
+        config.cash_weight = args.cash_weight
+    if args.target_return is not None:
+        config.target_return = args.target_return
+    if args.target_volatility is not None:
+        config.target_volatility = args.target_volatility
+    if args.frontier_points is not None:
+        config.frontier_points = args.frontier_points
+    if args.seed is not None:
+        config.seed = args.seed
+    if args.current_weights is not None:
+        config.current_weights = {}
+        for pair in args.current_weights.split(","):
+            pair = pair.strip()
+            if ":" in pair:
+                asset, w = pair.split(":", 1)
+                config.current_weights[asset.strip()] = float(w.strip())
+
+    if not price_series:
+        print("Error: no price_series found in config file", file=sys.stderr)
+        return 1
+
+    result = run_optimizer(config, price_series)
+
+    if fmt in ("markdown", "md"):
+        out = render_optimizer_markdown(result)
     else:
         out = json.dumps(_result_to_dict(result), indent=2, ensure_ascii=False)
 

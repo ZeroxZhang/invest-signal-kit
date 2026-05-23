@@ -34,7 +34,25 @@ def main(argv=None) -> int:
     p_render.add_argument("file", help="Path to JSON file")
     p_render.add_argument("--output", "-o", help="Output file path (default: stdout)")
 
+    # --- framework ---
+    p_fw = sub.add_parser("framework", help="Run professional framework analysis on a signal JSON")
+    p_fw.add_argument("file", help="Path to JSON file with framework inputs")
+    p_fw.add_argument("--output", "-o", help="Output file path (default: stdout)")
+
+    # --- memo ---
+    p_memo = sub.add_parser("memo", help="Generate a decision memo from a signal JSON")
+    p_memo.add_argument("file", help="Path to JSON file with framework inputs")
+    p_memo.add_argument("--output", "-o", help="Output file path (default: stdout)")
+
+    # --- serve ---
+    p_serve = sub.add_parser("serve", help="Serve the web UI locally")
+    p_serve.add_argument("--port", type=int, default=8765, help="Port to listen on (default: 8765)")
+    p_serve.add_argument("--bind", default="127.0.0.1", help="Address to bind (default: 127.0.0.1)")
+
     args = parser.parse_args(argv)
+
+    if args.command == "serve":
+        return _cmd_serve(args.port, args.bind)
 
     try:
         obj, kind = load_json_file(args.file)
@@ -48,6 +66,10 @@ def main(argv=None) -> int:
         return _cmd_score(obj, kind)
     elif args.command == "render":
         return _cmd_render(obj, kind, getattr(args, "output", None))
+    elif args.command == "framework":
+        return _cmd_framework(args.file, getattr(args, "output", None))
+    elif args.command == "memo":
+        return _cmd_memo(args.file, getattr(args, "output", None))
 
     return 0
 
@@ -95,4 +117,110 @@ def _cmd_render(obj, kind: str, output: str | None) -> int:
         print(f"Written to {output}")
     else:
         print(md)
+    return 0
+
+
+def _cmd_framework(file_path: str, output: str | None) -> int:
+    """Run professional framework analysis."""
+    from .framework import run_full_analysis
+
+    text = Path(file_path).read_text(encoding="utf-8")
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        print(f"Error: Invalid JSON: {exc}", file=sys.stderr)
+        return 1
+
+    # Unwrap if needed
+    if "signal" in data:
+        data = data["signal"]
+
+    result = run_full_analysis(data)
+    out = json.dumps(result, indent=2, ensure_ascii=False)
+
+    if output:
+        Path(output).write_text(out, encoding="utf-8")
+        print(f"Written to {output}")
+    else:
+        print(out)
+    return 0
+
+
+def _cmd_memo(file_path: str, output: str | None) -> int:
+    """Generate a decision memo."""
+    from .framework import (
+        MarketConfirmationInput,
+        MemoInput,
+        PositionSizingInput,
+        RiskExecutionInput,
+        ScenarioInput,
+        ThesisQualityInput,
+        generate_decision_memo,
+    )
+
+    text = Path(file_path).read_text(encoding="utf-8")
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        print(f"Error: Invalid JSON: {exc}", file=sys.stderr)
+        return 1
+
+    # Unwrap if needed
+    signal_data = data.get("signal", data)
+    fw = signal_data.get("framework", {})
+
+    # Build memo input
+    tq_raw = fw.get("thesis_quality", {})
+    mc_raw = fw.get("market_confirmation", {})
+    re_raw = fw.get("risk_execution", {})
+    ev_raw = fw.get("scenario", {})
+    ps_raw = fw.get("position_sizing", {})
+
+    inst = signal_data.get("instrument", {})
+
+    memo_inp = MemoInput(
+        signal_title=signal_data.get("title", ""),
+        signal_summary=signal_data.get("summary", ""),
+        instrument_code=inst.get("code", ""),
+        instrument_name=inst.get("name", ""),
+        direction=signal_data.get("direction", ""),
+        impact_horizon=signal_data.get("impact_horizon", ""),
+        thesis=ThesisQualityInput(**tq_raw) if tq_raw else None,
+        market=MarketConfirmationInput(**mc_raw) if mc_raw else None,
+        risk=RiskExecutionInput(**re_raw) if re_raw else None,
+        scenario=ScenarioInput(**ev_raw) if ev_raw else None,
+        sizing=PositionSizingInput(**ps_raw) if ps_raw else None,
+        target_return_pct=ps_raw.get("target_return_pct", ev_raw.get("bull_return_pct", 10)),
+    )
+
+    md = generate_decision_memo(memo_inp)
+
+    if output:
+        Path(output).write_text(md, encoding="utf-8")
+        print(f"Written to {output}")
+    else:
+        print(md)
+    return 0
+
+
+def _cmd_serve(port: int, bind: str) -> int:
+    """Serve the web UI using stdlib http.server."""
+    import http.server
+    import os
+
+    web_dir = Path(__file__).resolve().parent.parent / "web"
+    if not web_dir.is_dir():
+        print(f"Error: web directory not found at {web_dir}", file=sys.stderr)
+        return 1
+
+    os.chdir(web_dir)
+    handler = http.server.SimpleHTTPRequestHandler
+    server = http.server.HTTPServer((bind, port), handler)
+    print(f"Serving web UI at http://{bind}:{port}")
+    print(f"  Serving from: {web_dir}")
+    print("  Press Ctrl+C to stop.")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopped.")
     return 0

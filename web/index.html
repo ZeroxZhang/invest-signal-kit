@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invest Signal Kit — Workstation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <h1>invest-signal-kit</h1>
+      <span class="version">v0.2.0</span>
+    </div>
+    <nav id="main-nav">
+      <button class="nav-btn active" data-tab="signal-lab">Signal Lab</button>
+      <button class="nav-btn" data-tab="scorecards">Scorecards</button>
+      <button class="nav-btn" data-tab="scenario-sizing">Scenario &amp; Sizing</button>
+      <button class="nav-btn" data-tab="decision-memo">Decision Memo</button>
+      <button class="nav-btn" data-tab="examples">Examples</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ===== Signal Lab ===== -->
+    <section id="signal-lab" class="tab-panel active">
+      <div class="panel-grid">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Signal Input</h2>
+            <div class="btn-group">
+              <button id="btn-validate" class="btn btn-sm">Validate</button>
+              <button id="btn-score" class="btn btn-sm">Score</button>
+              <button id="btn-render" class="btn btn-sm">Render MD</button>
+              <button id="btn-framework" class="btn btn-sm btn-primary">Full Analysis</button>
+            </div>
+          </div>
+          <textarea id="signal-editor" spellcheck="false" placeholder="Paste or edit signal JSON here..."></textarea>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Output</h2>
+            <div class="btn-group">
+              <button id="btn-copy-output" class="btn btn-sm">Copy</button>
+              <button id="btn-clear-output" class="btn btn-sm">Clear</button>
+            </div>
+          </div>
+          <div id="signal-output" class="output-area">
+            <p class="placeholder-text">Load an example or paste JSON, then click an action button.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Scorecards ===== -->
+    <section id="scorecards" class="tab-panel">
+      <div class="scorecards-grid">
+        <!-- Thesis Quality -->
+        <div class="panel scorecard-panel">
+          <h2>Thesis Quality</h2>
+          <div id="thesis-factors" class="factor-list">
+            <div class="factor-row" data-factor="evidence_strength">
+              <label>Evidence Strength</label>
+              <input type="range" min="0" max="10" step="0.5" value="5">
+              <span class="factor-value">5.0</span>
+              <span class="factor-weight">25%</span>
+            </div>
+            <div class="factor-row" data-factor="source_diversity">
+              <label>Source Diversity</label>
+              <input type="range" min="0" max="10" step="0.5" value="5">
+              <span class="factor-value">5.0</span>
+              <span class="factor-weight">20%</span>
+            </div>
+            <div class="factor-row" data-factor="thesis_clarity">
+              <label>Thesis Clarity</label>
+              <input type="range" min="0" max="10" step="0.5" value="5">
+              <span class="factor-value">5.0</span>
+              <span class="factor-weight">25%</span>
+            </div>
+            <div class="factor-row" data-factor="catalyst_specificity">
+              <label>Catalyst Specificity</label>
+              <input type="range" min="0" max="10" step="0.5" value="5">
+              <span class="factor-value">5.0</span>
+              <span class="factor-weight">15%</span>
+            </div>
+            <div class="factor-row" data-factor="time_horizon_fit">
+              <label>Time Horizon Fit</label>
+              <input type="range" min="0" max="10" step="0.5" value="5">
+              <span class="factor-value">5.0</span>
+              <span class="factor-weight">15%</span>
+            </div>
+          </div>
+          <div class="scorecard-result">
+            <div class="score-display">
+              <span class="score-label">Score</span>
+              <span class="score-number" id="thesis-score">50.0</span>
+              <span class="score-grade" id="thesis-grade">C</span>
+            </div>
+            <div id="thesis-blockers" class="blockers-list"></div>
+          </div>
+        </div>
+
+        <!-- Market Confirmation -->
+        <div class="panel scorecard-panel">
+          <h2>Market / Price Confirmation</h2>
+          <div id="market-factors" class="factor-list">
+            <div class="factor-row" data-factor="trend_alignment">
+              <label>Trend Alignment</label>
+              <input type="range" min="0" max="10" step="0.5" value="5">
+              <span class="factor-value">5.0</span>
+              <span class="factor-weight">30%</span>
+            </div>
+            <div class="factor-row" data-factor="momentum">
+              <label>Momentum</label>
+              <input type="range" min="0" max="10" step="0.5" value="5">
+              <span class="factor-value">5.0</span>
+              <span class="factor-weight">20%</span>
+            </div>
+            <div class="factor-row" data-factor="volume_liquidity">
+              <label>Volume / Liquidity</label>
+              <input type="range" min="0" max="10" step="0.5" value="5">
+              <span class="factor-value">5.0</span>
+              <span class="factor-weight">20%</span>
+            </div>
+            <div class="factor-row" data-factor="relative_strength">
+              <label>Relative Strength</label>
+              <input type="range" min="0" max="10" step="0.5" value="5">
+              <span class="factor-value">5.0</span>
+              <span class="factor-weight">15%</span>
+            </div>
+            <div class="factor-row" data-factor="regime_alignment">
+              <label>Regime Alignment</label>
+              <input type="range" min="0" max="10" step="0.5" value="5">
+              <span class="factor-value">5.0</span>
+              <span class="factor-weight">15%</span>
+            </div>
+          </div>
+          <div class="scorecard-result">
+            <div class="score-display">
+              <span class="score-label">Score</span>
+              <span class="score-number" id="market-score">50.0</span>
+              <span class="score-grade" id="market-grade">C</span>
+            </div>
+            <div id="market-blockers" class="blockers-list"></div>
+          </div>
+        </div>
+
+        <!-- Risk / Execution -->
+        <div class="panel scorecard-panel">
+          <h2>Risk &amp; Execution Discipline</h2>
+          <div id="risk-factors" class="factor-list">
+            <div class="factor-row" data-factor="invalidation_clarity">
+              <label>Invalidation Clarity</label>
+              <input type="range" min="0" max="10" step="0.5" value="5">
+              <span class="factor-value">5.0</span>
+              <span class="factor-weight">25%</span>
+            </div>
+            <div class="factor-row" data-factor="max_loss_defined">
+              <label>Max Loss Defined</label>
+              <input type="range" min="0" max="10" step="0.5" value="5">
+              <span class="factor-value">5.0</span>
+              <span class="factor-weight">20%</span>
+            </div>
+            <div class="factor-row" data-factor="position_sizing_discipline">
+              <label>Position Sizing Discipline</label>
+              <input type="range" min="0" max="10" step="0.5" value="5">
+              <span class="factor-value">5.0</span>
+              <span class="factor-weight">20%</span>
+            </div>
+            <div class="factor-row" data-factor="liquidity_slippage_risk">
+              <label>Liquidity / Slippage</label>
+              <input type="range" min="0" max="10" step="0.5" value="5">
+              <span class="factor-value">5.0</span>
+              <span class="factor-weight">15%</span>
+            </div>
+            <div class="factor-row" data-factor="concentration_risk">
+              <label>Concentration Risk</label>
+              <input type="range" min="0" max="10" step="0.5" value="5">
+              <span class="factor-value">5.0</span>
+              <span class="factor-weight">10%</span>
+            </div>
+            <div class="factor-row" data-factor="time_stop">
+              <label>Time Stop</label>
+              <input type="range" min="0" max="10" step="0.5" value="5">
+              <span class="factor-value">5.0</span>
+              <span class="factor-weight">10%</span>
+            </div>
+          </div>
+          <div class="scorecard-result">
+            <div class="score-display">
+              <span class="score-label">Score</span>
+              <span class="score-number" id="risk-score">50.0</span>
+              <span class="score-grade" id="risk-grade">C</span>
+            </div>
+            <div id="risk-blockers" class="blockers-list"></div>
+          </div>
+        </div>
+
+        <!-- Decision Readiness -->
+        <div class="panel scorecard-panel">
+          <h2>Decision Readiness</h2>
+          <div class="decision-ladder">
+            <div class="ladder-step" data-level="information">
+              <span class="ladder-icon">&#9675;</span>
+              <span class="ladder-label">Information</span>
+            </div>
+            <div class="ladder-connector"></div>
+            <div class="ladder-step" data-level="watch">
+              <span class="ladder-icon">&#9675;</span>
+              <span class="ladder-label">Watch</span>
+            </div>
+            <div class="ladder-connector"></div>
+            <div class="ladder-step" data-level="candidate">
+              <span class="ladder-icon">&#9675;</span>
+              <span class="ladder-label">Candidate</span>
+            </div>
+            <div class="ladder-connector"></div>
+            <div class="ladder-step" data-level="action">
+              <span class="ladder-icon">&#9675;</span>
+              <span class="ladder-label">Action</span>
+            </div>
+          </div>
+          <div id="decision-blockers" class="blockers-list"></div>
+          <div id="decision-checklist" class="checklist"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Scenario & Sizing ===== -->
+    <section id="scenario-sizing" class="tab-panel">
+      <div class="panel-grid">
+        <!-- Expected Value -->
+        <div class="panel">
+          <h2>Expected Value / Scenario Model</h2>
+          <div class="scenario-inputs">
+            <div class="scenario-row header-row">
+              <span></span>
+              <span>Probability</span>
+              <span>Return (%)</span>
+            </div>
+            <div class="scenario-row" data-scenario="bull">
+              <label>Bull</label>
+              <input type="number" id="ev-bull-prob" value="0.25" step="0.05" min="0" max="1">
+              <input type="number" id="ev-bull-ret" value="15" step="1">
+            </div>
+            <div class="scenario-row" data-scenario="base">
+              <label>Base</label>
+              <input type="number" id="ev-base-prob" value="0.50" step="0.05" min="0" max="1">
+              <input type="number" id="ev-base-ret" value="3" step="1">
+            </div>
+            <div class="scenario-row" data-scenario="bear">
+              <label>Bear</label>
+              <input type="number" id="ev-bear-prob" value="0.25" step="0.05" min="0" max="1">
+              <input type="number" id="ev-bear-ret" value="-8" step="1">
+            </div>
+          </div>
+          <div class="ev-results">
+            <div class="ev-metric">
+              <span class="metric-label">Expected Return</span>
+              <span class="metric-value" id="ev-expected">+3.50%</span>
+            </div>
+            <div class="ev-metric">
+              <span class="metric-label">Max Drawdown</span>
+              <span class="metric-value" id="ev-drawdown">-8.00%</span>
+            </div>
+            <div class="ev-metric">
+              <span class="metric-label">Payoff Asymmetry</span>
+              <span class="metric-value" id="ev-asymmetry">1.25x</span>
+            </div>
+            <div class="ev-metric">
+              <span class="metric-label">Quality</span>
+              <span class="metric-value" id="ev-quality">Marginal</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Position Sizing -->
+        <div class="panel">
+          <h2>Risk-Budget Position Sizing</h2>
+          <div class="sizing-inputs">
+            <div class="input-row">
+              <label>Portfolio Value</label>
+              <input type="number" id="sz-portfolio" value="500000" step="10000">
+            </div>
+            <div class="input-row">
+              <label>Max Risk (%)</label>
+              <input type="number" id="sz-max-risk" value="2" step="0.5" min="0.1" max="10">
+            </div>
+            <div class="input-row">
+              <label>Entry Price</label>
+              <input type="number" id="sz-entry" value="1.02" step="0.01">
+            </div>
+            <div class="input-row">
+              <label>Stop Distance (%)</label>
+              <input type="number" id="sz-stop" value="4" step="0.5" min="0.1">
+            </div>
+            <div class="input-row">
+              <label>Confidence (0-100)</label>
+              <input type="number" id="sz-confidence" value="75" step="5" min="0" max="100">
+            </div>
+            <div class="input-row">
+              <label>Target Return (%)</label>
+              <input type="number" id="sz-target" value="15" step="1">
+            </div>
+          </div>
+          <div class="sizing-results">
+            <div class="sizing-metric">
+              <span class="metric-label">Risk Budget</span>
+              <span class="metric-value" id="sz-risk-amount">10,000</span>
+            </div>
+            <div class="sizing-metric">
+              <span class="metric-label">Raw Shares</span>
+              <span class="metric-value" id="sz-raw-shares">245,098</span>
+            </div>
+            <div class="sizing-metric">
+              <span class="metric-label">Adjusted Shares</span>
+              <span class="metric-value" id="sz-adj-shares">183,824</span>
+            </div>
+            <div class="sizing-metric">
+              <span class="metric-label">Position Value</span>
+              <span class="metric-value" id="sz-position-value">187,500</span>
+            </div>
+            <div class="sizing-metric">
+              <span class="metric-label">% of Portfolio</span>
+              <span class="metric-value" id="sz-position-pct">37.5%</span>
+            </div>
+            <div class="sizing-metric">
+              <span class="metric-label">Risk/Reward</span>
+              <span class="metric-value" id="sz-rr">3.75:1</span>
+            </div>
+          </div>
+          <div id="sizing-notes" class="notes-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Decision Memo ===== -->
+    <section id="decision-memo" class="tab-panel">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Decision Memo</h2>
+          <div class="btn-group">
+            <button id="btn-generate-memo" class="btn btn-primary">Generate from Scorecards</button>
+            <button id="btn-copy-memo" class="btn btn-sm">Copy</button>
+          </div>
+        </div>
+        <div id="memo-output" class="output-area memo-area">
+          <p class="placeholder-text">Set scorecard values and scenario inputs, then click "Generate from Scorecards".</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Examples ===== -->
+    <section id="examples" class="tab-panel">
+      <div class="panel">
+        <h2>Example Gallery</h2>
+        <p class="section-desc">Pre-loaded examples demonstrating different signal types. Click to load into Signal Lab.</p>
+        <div class="example-grid" id="example-gallery">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>invest-signal-kit &mdash; research tooling, not financial advice. No API keys, no brokerage integration, no automatic trading.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

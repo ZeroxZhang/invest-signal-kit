@@ -126,6 +126,213 @@ invest-signal-kit serve --port 8765
 | `optimize-portfolio` | Run portfolio optimizer / efficient frontier | `python3 -m invest_signal_kit optimize-portfolio examples/optimizer_config.json` |
 | `serve` | Launch the local browser workstation | `python3 -m invest_signal_kit serve --port 8765` |
 
+## 中文快速上手
+
+`invest-signal-kit` 是一个完全本地运行的投资研究流程工具。它不会荐股、不会自动下单、不会承诺收益；它的作用是把一条投资线索拆成可审计的结构化流程：证据、数据质量、触发条件、失效条件、仓位风险、组合约束、回测、蒙特卡洛风险、组合优化和决策复盘。
+
+适合的使用场景：
+
+- 把新闻、研报、ETF/股票观察整理成统一的信号 JSON。
+- 判断一个想法应该停留在 `information`、`watch`、`candidate` 还是 `action`。
+- 用 scorecard、情景分析和仓位模型检查自己有没有过度自信。
+- 对组合做风险暴露、再平衡、回测、蒙特卡洛和有效前沿分析。
+- 生成可保存、可复盘的 Markdown 决策备忘录。
+
+### 中文安装方式
+
+```bash
+git clone https://github.com/ZeroxZhang/invest-signal-kit.git
+cd invest-signal-kit
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install .
+```
+
+项目运行时只使用 Python 标准库，不需要 API key，也不会连接券商账户。
+
+### 中文用户最快路径：打开 Web 工作台
+
+```bash
+python3 -m invest_signal_kit serve --port 8765
+```
+
+然后在浏览器打开：
+
+```text
+http://127.0.0.1:8765
+```
+
+推荐第一次这样用：
+
+1. 进入 **Examples** 标签页。
+2. 点击 **Professional Full Analysis** 加载完整示例。
+3. 回到 **Signal Lab**，点击 **Validate** 检查信号结构。
+4. 点击 **Full Analysis** 跑完整专业框架。
+5. 在 **Scorecards** 查看论文质量、市场确认、风险执行和决策等级。
+6. 在 **Scenario & Sizing** 调整牛市/基准/熊市概率、收益、止损和仓位。
+7. 在 **Decision Memo** 点击 **Generate from Scorecards** 生成 Markdown 决策备忘录。
+8. 如果要做组合层面的研究，再进入 **Portfolio**、**Rebalance**、**Backtest**、**Monte Carlo** 和 **Optimizer** 标签页。
+
+### 中文 CLI 命令速查
+
+最常用的一组命令：
+
+```bash
+# 1. 校验单个投资信号
+python3 -m invest_signal_kit validate examples/etf_signal.json
+
+# 2. 给信号打 0-100 分
+python3 -m invest_signal_kit score examples/etf_signal.json
+
+# 3. 运行专业框架：scorecard + 情景分析 + 仓位建议 + 决策等级
+python3 -m invest_signal_kit framework examples/professional_signal.json
+
+# 4. 生成 Markdown 决策备忘录
+python3 -m invest_signal_kit memo examples/professional_signal.json --output memo.md
+
+# 5. 组合风险分析
+python3 -m invest_signal_kit portfolio examples/portfolio_workflow.json --format markdown
+
+# 6. 再平衡 / 交易计划
+python3 -m invest_signal_kit rebalance examples/rebalance_plan.json --format markdown
+
+# 7. 回测 / 信号 replay
+python3 -m invest_signal_kit backtest examples/backtest_scenario.json --format markdown
+
+# 8. 蒙特卡洛风险模拟
+python3 -m invest_signal_kit monte-carlo examples/monte_carlo_config.json --format markdown
+
+# 9. 组合优化 / 有效前沿
+python3 -m invest_signal_kit optimize-portfolio examples/optimizer_config.json --format markdown
+```
+
+安装后也可以使用 console script：
+
+```bash
+invest-signal-kit validate examples/etf_signal.json
+invest-signal-kit serve --port 8765
+```
+
+### 中文命令表
+
+| 命令 | 什么时候用 | 示例 |
+|------|------------|------|
+| `validate` | 检查信号 JSON 是否符合规则 | `python3 -m invest_signal_kit validate examples/etf_signal.json` |
+| `score` | 输出原始信号质量分数 | `python3 -m invest_signal_kit score examples/etf_signal.json` |
+| `render` | 把信号 JSON 渲染成 Markdown 报告 | `python3 -m invest_signal_kit render examples/etf_signal.json -o out.md` |
+| `framework` | 跑专业 scorecard、EV、仓位和决策等级 | `python3 -m invest_signal_kit framework examples/professional_signal.json` |
+| `memo` | 生成可复盘的 Markdown 决策备忘录 | `python3 -m invest_signal_kit memo examples/professional_signal.json -o memo.md` |
+| `portfolio` | 分析组合暴露、限制、压力场景和候选标的 | `python3 -m invest_signal_kit portfolio examples/portfolio_workflow.json` |
+| `rebalance` | 根据当前持仓、目标权重和候选信号生成交易计划 | `python3 -m invest_signal_kit rebalance examples/rebalance_plan.json` |
+| `backtest` | 根据价格和信号事件做确定性回测 | `python3 -m invest_signal_kit backtest examples/backtest_scenario.json` |
+| `monte-carlo` | 做 bootstrap/parametric 蒙特卡洛路径和回撤风险模拟 | `python3 -m invest_signal_kit monte-carlo examples/monte_carlo_config.json` |
+| `optimize-portfolio` | 计算最小方差、最大 Sharpe、风险平价和有效前沿 | `python3 -m invest_signal_kit optimize-portfolio examples/optimizer_config.json` |
+| `import` | 导入价格、信号、持仓、benchmark 的 CSV/JSON | `python3 -m invest_signal_kit import price examples/prices.csv` |
+| `build-scenario` | 从导入数据生成回测场景 | `python3 -m invest_signal_kit build-scenario --prices examples/prices.csv --signals examples/signals.csv` |
+| `journal` | 分析决策日志、生命周期和归因 | `python3 -m invest_signal_kit journal examples/decision_journal.json` |
+| `review` | 复盘决策过程是否遵守规则 | `python3 -m invest_signal_kit review examples/decision_journal.json` |
+| `calibrate` | 用实际结果校准历史评分 | `python3 -m invest_signal_kit calibrate examples/decision_journal.json` |
+| `serve` | 启动本地 Web 工作台 | `python3 -m invest_signal_kit serve --port 8765` |
+
+### 推荐中文工作流
+
+把它当成一个“投资线索晋级流水线”：
+
+```bash
+# 第一步：先把原始想法写成 JSON，然后校验结构
+python3 -m invest_signal_kit validate my_signal.json
+
+# 第二步：跑专业框架，看证据、市场确认、风险执行和决策等级
+python3 -m invest_signal_kit framework my_signal.json --output analysis.json
+
+# 第三步：生成 Markdown 决策备忘录，留给自己或团队复盘
+python3 -m invest_signal_kit memo my_signal.json --output memo.md
+
+# 第四步：如果要做组合层面的检查，继续跑组合风险、再平衡和模拟
+python3 -m invest_signal_kit portfolio examples/portfolio_workflow.json --format markdown
+python3 -m invest_signal_kit monte-carlo examples/monte_carlo_config.json --format markdown
+python3 -m invest_signal_kit optimize-portfolio examples/optimizer_config.json --format markdown
+
+# 第五步：打开 Web 工作台，交互式调整情景、仓位、回撤和有效前沿
+python3 -m invest_signal_kit serve --port 8765
+```
+
+### 输入文件怎么写
+
+最小可用信号文件是一个 JSON，核心字段在 `signal` 下面：
+
+```json
+{
+  "signal": {
+    "id": "2026-05-20-semiconductor-etf-001",
+    "title": "Semiconductor ETF breakout watch",
+    "summary": "Semiconductor sector showing strength with policy tailwinds and volume expansion.",
+    "source_task": "ETF pre-market analysis",
+    "signal_type": "ETF",
+    "instrument": {
+      "code": "512480",
+      "name": "Semiconductor ETF",
+      "asset_type": "ETF"
+    },
+    "evidence": [
+      {
+        "source": "Exchange fund flow data",
+        "date": "2026-05-19",
+        "quote_or_data": "Net inflow 120M CNY over 3 days",
+        "evidence_level": "A"
+      }
+    ],
+    "direction": "bullish",
+    "impact_horizon": "1-3 months",
+    "confidence": 75,
+    "data_quality": "verified",
+    "action_level": "candidate",
+    "suggested_action": "Watch for volume confirmation above 1.2x 20-day average",
+    "trigger_condition": "Breaks above resistance with volume confirmation",
+    "invalidation_condition": "Falls below support or sector trend breaks",
+    "max_risk": "8% drawdown from entry to stop-loss",
+    "risk_note": "Single-sector concentration risk."
+  }
+}
+```
+
+要做更完整的专业分析，在同一个 JSON 里增加顶层 `framework` 对象，参考 `examples/professional_signal.json`。
+
+### 结果怎么读
+
+- `information`：只是信息，还不应该行动。
+- `watch`：值得观察，但必须补齐触发条件和失效条件。
+- `candidate`：证据、触发和风险框架基本齐备，可以进入情景和仓位分析。
+- `action`：流程上已经准备好进入人工审查，但不等于一定要买，也不代表收益有保证。
+
+关键指标：
+
+- `thesis_quality.total`：投资论点质量。
+- `market_confirmation.total`：价格、趋势、量能、相对强度和市场环境确认度。
+- `risk_execution.total`：止损、仓位、流动性、集中度和时间止损纪律。
+- `expected_value.expected_return_pct`：牛/基准/熊情景的概率加权期望收益。
+- `position_sizing.adjusted_position_size`：经过风险预算和信心折扣后的仓位建议。
+- `decision_readiness.blockers`：阻止信号晋级的具体原因。
+
+### 中文资料入口
+
+更详细的英文文档在 `docs/` 目录：
+
+- [docs/usage.md](docs/usage.md)：CLI 和整体使用方式。
+- [docs/framework.md](docs/framework.md)：专业 scorecard、情景和仓位框架。
+- [docs/portfolio.md](docs/portfolio.md)：组合风险工作流。
+- [docs/rebalance.md](docs/rebalance.md)：再平衡和交易计划。
+- [docs/backtest.md](docs/backtest.md)：回测和 signal replay。
+- [docs/monte_carlo.md](docs/monte_carlo.md)：蒙特卡洛风险模拟。
+- [docs/optimizer.md](docs/optimizer.md)：组合优化和有效前沿。
+- [docs/ui.md](docs/ui.md)：Web 工作台说明。
+
+中文用户可以先按本节跑通示例，再按需要深入阅读对应 `docs/` 文件。
+
+### 中文免责声明
+
+本项目是研究流程和风险纪律工具，不是投资顾问、交易系统或收益承诺。所有输出都应该被理解为“帮助你检查研究过程是否完整”的结构化提示，而不是买入、卖出、持有或配置建议。任何真实投资决策都需要你自己承担责任，并结合适用法律、税务、流动性、交易成本和个人风险承受能力。
+
 ## Practical Workflow
 
 Use the toolkit as a promotion pipeline. Do not start at "buy/sell"; start at evidence quality.

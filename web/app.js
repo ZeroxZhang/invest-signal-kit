@@ -1055,6 +1055,17 @@ function populateExamples() {
         return;
       }
 
+      // Journal examples load into Journal tab
+      if (ex.type === 'journal') {
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        document.querySelector('[data-tab="journal"]').classList.add('active');
+        document.getElementById('journal').classList.add('active');
+        document.getElementById('journal-editor').value = JSON.stringify(ex.data, null, 2);
+        runJournalAnalysis();
+        return;
+      }
+
       // Switch to Signal Lab
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -1427,6 +1438,187 @@ function portfolioEvaluate(data) {
 }
 
 // ---------------------------------------------------------------------------
+// Decision Journal Engine (mirrors invest_signal_kit/journal.py)
+// ---------------------------------------------------------------------------
+
+const JOURNAL_VALID_STATUSES = new Set(['planned', 'active', 'exited', 'invalidated', 'reviewed']);
+
+function journalLoadDecision(raw) {
+  return {
+    id: raw.id || '',
+    instrument_code: raw.instrument_code || '',
+    instrument_name: raw.instrument_name || '',
+    direction: raw.direction || 'bullish',
+    sector: raw.sector || '',
+    status: raw.status || 'planned',
+    decision_date: raw.decision_date || '',
+    entry_date: raw.entry_date || '',
+    exit_date: raw.exit_date || '',
+    thesis_snapshot: raw.thesis_snapshot || '',
+    thesis_quality_score: parseFloat(raw.thesis_quality_score) || 0,
+    market_confirmation_score: parseFloat(raw.market_confirmation_score) || 0,
+    risk_execution_score: parseFloat(raw.risk_execution_score) || 0,
+    signal_score: parseFloat(raw.signal_score) || 0,
+    ev_quality: raw.ev_quality || '',
+    entry_price: parseFloat(raw.entry_price) || 0,
+    exit_price: parseFloat(raw.exit_price) || 0,
+    target_price: parseFloat(raw.target_price) || 0,
+    stop_price: parseFloat(raw.stop_price) || 0,
+    risk_budget_pct: parseFloat(raw.risk_budget_pct) || 0,
+    position_size_pct: parseFloat(raw.position_size_pct) || 0,
+    decision_level: raw.decision_level || 'information',
+    tags: Array.isArray(raw.tags) ? raw.tags : [],
+    review_date: raw.review_date || '',
+    time_stop_date: raw.time_stop_date || '',
+    exit_reason: raw.exit_reason || '',
+    actual_return_pct: parseFloat(raw.actual_return_pct) || 0,
+    r_multiple: parseFloat(raw.r_multiple) || 0,
+    outcome_category: raw.outcome_category || '',
+    process_score: parseFloat(raw.process_score) || 0,
+    review_notes: raw.review_notes || '',
+    market_move_pct: parseFloat(raw.market_move_pct) || 0,
+    sector_move_pct: parseFloat(raw.sector_move_pct) || 0,
+    idiosyncratic_move_pct: parseFloat(raw.idiosyncratic_move_pct) || 0,
+    sizing_contribution_pct: parseFloat(raw.sizing_contribution_pct) || 0,
+    attribution_notes: raw.attribution_notes || '',
+  };
+}
+
+function journalLoadJournal(data) {
+  const list = Array.isArray(data) ? data : (data.decisions || []);
+  return list.map(journalLoadDecision);
+}
+
+function journalValidateLifecycle(decisions) {
+  const today = new Date().toISOString().slice(0, 10);
+  const alerts = [];
+
+  for (const d of decisions) {
+    if (!JOURNAL_VALID_STATUSES.has(d.status)) {
+      alerts.push({ rule: 'invalid_status', message: `Decision ${d.id}: invalid status '${d.status}'`, severity: 'error', decision_id: d.id });
+      continue;
+    }
+
+    if (d.status === 'active') {
+      if (!d.exit_date && !d.time_stop_date)
+        alerts.push({ rule: 'active_decision_missing_exit', message: `Decision ${d.id} (${d.instrument_code}): active with no exit or time-stop date`, severity: 'warning', decision_id: d.id });
+      if (d.stop_price > 0 && d.entry_price > 0 && d.direction === 'bullish' && d.entry_price > d.stop_price && d.exit_price > 0 && d.exit_price < d.stop_price)
+        alerts.push({ rule: 'stop_breached_not_exited', message: `Decision ${d.id} (${d.instrument_code}): exit price ${d.exit_price} is below stop ${d.stop_price}`, severity: 'error', decision_id: d.id });
+      if (!d.thesis_snapshot)
+        alerts.push({ rule: 'missing_thesis', message: `Decision ${d.id} (${d.instrument_code}): active decision has no thesis snapshot`, severity: 'warning', decision_id: d.id });
+    }
+
+    if (d.status === 'exited' || d.status === 'invalidated') {
+      if (!d.outcome_category)
+        alerts.push({ rule: 'missing_review', message: `Decision ${d.id} (${d.instrument_code}): ${d.status} but no outcome review`, severity: 'warning', decision_id: d.id });
+      if (!d.thesis_snapshot)
+        alerts.push({ rule: 'missing_thesis', message: `Decision ${d.id} (${d.instrument_code}): ${d.status} decision has no thesis snapshot`, severity: 'warning', decision_id: d.id });
+    }
+
+    if (d.status === 'invalidated' && !d.exit_date)
+      alerts.push({ rule: 'thesis_invalidated_not_exited', message: `Decision ${d.id} (${d.instrument_code}): invalidated but no exit date recorded`, severity: 'warning', decision_id: d.id });
+
+    if (d.review_date && d.review_date < today && d.status !== 'reviewed')
+      alerts.push({ rule: 'expired_review', message: `Decision ${d.id} (${d.instrument_code}): review date ${d.review_date} has passed`, severity: 'warning', decision_id: d.id });
+
+    if (d.risk_budget_pct > 5.0)
+      alerts.push({ rule: 'oversized_risk', message: `Decision ${d.id} (${d.instrument_code}): risk budget ${d.risk_budget_pct.toFixed(1)}% exceeds 5% threshold`, severity: 'warning', decision_id: d.id });
+
+    if (d.status === 'planned' && d.decision_date) {
+      try {
+        const dd = new Date(d.decision_date);
+        const days = Math.floor((new Date(today) - dd) / 86400000);
+        if (days > 90)
+          alerts.push({ rule: 'stale_thesis', message: `Decision ${d.id} (${d.instrument_code}): planned for ${days} days — thesis may be stale`, severity: 'warning', decision_id: d.id });
+      } catch (e) { /* ignore */ }
+    }
+  }
+  return alerts;
+}
+
+const JOURNAL_BUCKET_EDGES = [[0, 30], [30, 50], [50, 65], [65, 80], [80, 101]];
+const JOURNAL_BUCKET_LABELS = ['0-29 (F/D)', '30-49 (D/C)', '50-64 (C)', '65-79 (B)', '80-100 (A)'];
+
+function journalEffectiveScore(d) {
+  if (d.signal_score > 0) return d.signal_score;
+  const scores = [d.thesis_quality_score, d.market_confirmation_score, d.risk_execution_score].filter(s => s > 0);
+  return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+}
+
+function journalCalibrateScores(decisions) {
+  const reviewed = decisions.filter(d =>
+    (d.status === 'reviewed' || d.status === 'exited') && d.outcome_category);
+
+  const buckets = JOURNAL_BUCKET_EDGES.map(([lo, hi], i) => {
+    const bucketDecisions = reviewed.filter(d => {
+      const s = journalEffectiveScore(d);
+      return s >= lo && s < hi;
+    });
+    if (bucketDecisions.length === 0) return { score_range: JOURNAL_BUCKET_LABELS[i], decision_count: 0, win_count: 0, loss_count: 0, win_rate: 0, avg_return_pct: 0, avg_r_multiple: 0, total_return_pct: 0, process_error_count: 0 };
+
+    const n = bucketDecisions.length;
+    const wins = bucketDecisions.filter(d => d.actual_return_pct > 0).length;
+    const returns = bucketDecisions.map(d => d.actual_return_pct);
+    const rMults = bucketDecisions.filter(d => d.r_multiple !== 0).map(d => d.r_multiple);
+
+    return {
+      score_range: JOURNAL_BUCKET_LABELS[i],
+      decision_count: n,
+      win_count: wins,
+      loss_count: n - wins,
+      win_rate: round1(wins / n * 100),
+      avg_return_pct: round2(returns.reduce((a, b) => a + b, 0) / n),
+      avg_r_multiple: rMults.length > 0 ? round2(rMults.reduce((a, b) => a + b, 0) / rMults.length) : 0,
+      total_return_pct: round2(returns.reduce((a, b) => a + b, 0)),
+      process_error_count: 0,
+    };
+  });
+
+  const nR = reviewed.length;
+  const allReturns = reviewed.map(d => d.actual_return_pct);
+  const allR = reviewed.filter(d => d.r_multiple !== 0).map(d => d.r_multiple);
+  const overallWins = reviewed.filter(d => d.actual_return_pct > 0).length;
+
+  return {
+    total_decisions: decisions.length,
+    reviewed_decisions: nR,
+    buckets,
+    overall_win_rate: nR > 0 ? round1(overallWins / nR * 100) : 0,
+    overall_avg_return: nR > 0 ? round2(allReturns.reduce((a, b) => a + b, 0) / nR) : 0,
+    overall_avg_r_multiple: allR.length > 0 ? round2(allR.reduce((a, b) => a + b, 0) / allR.length) : 0,
+  };
+}
+
+function journalComputeAttribution(decisions) {
+  return decisions
+    .filter(d => (d.status === 'reviewed' || d.status === 'exited') && d.outcome_category)
+    .map(d => {
+      const decomposed = d.market_move_pct + d.sector_move_pct + d.idiosyncratic_move_pct;
+      const residual = round2(d.actual_return_pct - decomposed);
+      const sizing = d.position_size_pct > 0 ? round2(d.actual_return_pct * (d.position_size_pct / 100)) : 0;
+      return {
+        decision_id: d.id,
+        instrument_code: d.instrument_code,
+        total_return_pct: round2(d.actual_return_pct),
+        market_move_pct: round2(d.market_move_pct),
+        sector_move_pct: round2(d.sector_move_pct),
+        idiosyncratic_move_pct: round2(d.idiosyncratic_move_pct),
+        sizing_contribution_pct: sizing,
+        residual_pct: residual,
+        notes: d.attribution_notes,
+      };
+    });
+}
+
+function journalAnalyze(data) {
+  const decisions = journalLoadJournal(data);
+  const alerts = journalValidateLifecycle(decisions);
+  const calibration = journalCalibrateScores(decisions);
+  const attribution = journalComputeAttribution(decisions);
+  return { decisions, alerts, calibration, attribution };
+}
+
+// ---------------------------------------------------------------------------
 // Portfolio UI
 // ---------------------------------------------------------------------------
 
@@ -1599,6 +1791,158 @@ document.addEventListener('DOMContentLoaded', () => {
       type: 'portfolio',
       description: 'Multi-asset portfolio with 5 holdings, sector limits, risk budget, 4 candidate signals, and 4 stress scenarios.',
       data: PORTFOLIO_EXAMPLE,
+    };
+    populateExamples();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Journal UI
+// ---------------------------------------------------------------------------
+
+const JOURNAL_EXAMPLE = {
+  decisions: [
+    { id: 'DJ-2026-001', instrument_code: '510300', instrument_name: 'CSI 300 ETF', direction: 'bullish', sector: 'Index', status: 'reviewed', decision_date: '2026-01-15', entry_date: '2026-01-20', exit_date: '2026-03-10', thesis_snapshot: 'Policy-driven recovery with improving PMI and credit impulse turning positive.', thesis_quality_score: 72, market_confirmation_score: 65, risk_execution_score: 70, signal_score: 75, ev_quality: 'positive_ev', entry_price: 3.85, exit_price: 4.28, target_price: 4.30, stop_price: 3.60, risk_budget_pct: 2.0, position_size_pct: 8.0, decision_level: 'action', tags: ['macro', 'policy', 'etf'], review_date: '2026-04-01', time_stop_date: '2026-04-20', exit_reason: 'hit_target', actual_return_pct: 11.17, r_multiple: 1.72, outcome_category: 'hit_target', process_score: 9.0, review_notes: 'Clean execution. Target hit.', market_move_pct: 7.5, sector_move_pct: 3.2, idiosyncratic_move_pct: 0.47, sizing_contribution_pct: 0.89, attribution_notes: 'Bulk from broad market rally.' },
+    { id: 'DJ-2026-002', instrument_code: '600519', instrument_name: 'Kweichow Moutai', direction: 'bullish', sector: 'Consumer', status: 'reviewed', decision_date: '2026-02-01', entry_date: '2026-02-05', exit_date: '2026-02-28', thesis_snapshot: 'Premium consumer demand resilient. Spring festival sales data strong.', thesis_quality_score: 68, market_confirmation_score: 55, risk_execution_score: 60, signal_score: 62, ev_quality: 'marginal', entry_price: 1680, exit_price: 1580, target_price: 1850, stop_price: 1590, risk_budget_pct: 1.5, position_size_pct: 5.0, decision_level: 'action', tags: ['consumer', 'single-stock'], review_date: '2026-03-15', time_stop_date: '2026-04-05', exit_reason: 'hit_stop', actual_return_pct: -5.95, r_multiple: -1.0, outcome_category: 'hit_stop', process_score: 7.0, review_notes: 'Stop hit on sector sell-off. Disciplined.', market_move_pct: -2.0, sector_move_pct: -3.5, idiosyncratic_move_pct: -0.45, sizing_contribution_pct: -0.30, attribution_notes: 'Sector rotation driver.' },
+    { id: 'DJ-2026-003', instrument_code: 'NVDA', instrument_name: 'NVIDIA Corp', direction: 'bullish', sector: 'Technology', status: 'reviewed', decision_date: '2026-01-25', entry_date: '2026-01-28', exit_date: '2026-04-15', thesis_snapshot: 'AI capex cycle accelerating. Data center revenue visibility through 2027.', thesis_quality_score: 82, market_confirmation_score: 78, risk_execution_score: 75, signal_score: 80, ev_quality: 'positive_ev', entry_price: 142.50, exit_price: 168.00, target_price: 170.00, stop_price: 125.00, risk_budget_pct: 2.5, position_size_pct: 10.0, decision_level: 'action', tags: ['ai', 'tech', 'semiconductor'], review_date: '2026-03-01', time_stop_date: '2026-05-01', exit_reason: 'hit_target', actual_return_pct: 17.89, r_multiple: 1.49, outcome_category: 'hit_target', process_score: 8.0, review_notes: 'Strong thesis execution.', market_move_pct: 5.0, sector_move_pct: 8.0, idiosyncratic_move_pct: 4.89, sizing_contribution_pct: 1.79, attribution_notes: 'Idiosyncratic alpha from earnings beat.' },
+    { id: 'DJ-2026-004', instrument_code: '518880', instrument_name: 'Gold ETF', direction: 'bullish', sector: 'Commodity', status: 'exited', decision_date: '2026-03-01', entry_date: '2026-03-05', exit_date: '2026-04-20', thesis_snapshot: 'Geopolitical risk premium underpricing. Central bank buying trend intact.', thesis_quality_score: 58, market_confirmation_score: 50, risk_execution_score: 45, signal_score: 52, ev_quality: 'marginal', entry_price: 5.80, exit_price: 5.95, target_price: 6.50, stop_price: 5.50, risk_budget_pct: 1.0, position_size_pct: 4.0, decision_level: 'candidate', tags: ['gold', 'hedge'], review_date: '2026-05-01', time_stop_date: '2026-06-01', exit_reason: 'time_stop', actual_return_pct: 2.59, r_multiple: 0.50, outcome_category: '', process_score: 0, review_notes: '', market_move_pct: 1.5, sector_move_pct: 1.0, idiosyncratic_move_pct: 0.09, sizing_contribution_pct: 0.10, attribution_notes: 'Modest return.' },
+    { id: 'DJ-2026-005', instrument_code: 'BABA', instrument_name: 'Alibaba Group', direction: 'bullish', sector: 'Technology', status: 'invalidated', decision_date: '2026-02-10', entry_date: '2026-02-15', exit_date: '2026-03-20', thesis_snapshot: 'Regulatory overhang lifting. Cloud revenue re-accelerating.', thesis_quality_score: 55, market_confirmation_score: 42, risk_execution_score: 50, signal_score: 50, ev_quality: 'marginal', entry_price: 85.00, exit_price: 72.00, target_price: 105.00, stop_price: 75.00, risk_budget_pct: 2.0, position_size_pct: 6.0, decision_level: 'candidate', tags: ['china', 'tech', 'regulatory'], review_date: '2026-04-01', time_stop_date: '2026-05-15', exit_reason: 'thesis_broken', actual_return_pct: -15.29, r_multiple: -1.30, outcome_category: 'thesis_broken', process_score: 4.0, review_notes: 'Regulatory thesis invalidated. Held through stop.', market_move_pct: -3.0, sector_move_pct: -5.0, idiosyncratic_move_pct: -7.29, sizing_contribution_pct: -0.92, attribution_notes: 'Idiosyncratic risk dominated.' },
+    { id: 'DJ-2026-006', instrument_code: '510050', instrument_name: 'SSE 50 ETF', direction: 'bullish', sector: 'Index', status: 'active', decision_date: '2026-04-15', entry_date: '2026-04-18', exit_date: '', thesis_snapshot: 'SOE reform catalyst accelerating. Valuation discount at 2-sigma.', thesis_quality_score: 70, market_confirmation_score: 62, risk_execution_score: 68, signal_score: 68, ev_quality: 'positive_ev', entry_price: 2.95, exit_price: 0, target_price: 3.35, stop_price: 2.75, risk_budget_pct: 2.0, position_size_pct: 7.0, decision_level: 'action', tags: ['soe', 'reform', 'dividend', 'etf'], review_date: '2026-06-15', time_stop_date: '2026-07-18', exit_reason: '', actual_return_pct: 0, r_multiple: 0, outcome_category: '', process_score: 0, review_notes: '', market_move_pct: 0, sector_move_pct: 0, idiosyncratic_move_pct: 0, sizing_contribution_pct: 0, attribution_notes: '' },
+    { id: 'DJ-2026-007', instrument_code: 'TSLA', instrument_name: 'Tesla Inc', direction: 'bearish', sector: 'Automotive', status: 'active', decision_date: '2026-04-20', entry_date: '2026-04-22', exit_date: '', thesis_snapshot: 'Margin compression continuing. EV competition intensifying.', thesis_quality_score: 62, market_confirmation_score: 48, risk_execution_score: 55, signal_score: 55, ev_quality: 'marginal', entry_price: 245.00, exit_price: 0, target_price: 200.00, stop_price: 270.00, risk_budget_pct: 1.5, position_size_pct: 4.0, decision_level: 'candidate', tags: ['ev', 'short', 'automotive'], review_date: '2026-06-01', time_stop_date: '2026-07-20', exit_reason: '', actual_return_pct: 0, r_multiple: 0, outcome_category: '', process_score: 0, review_notes: '', market_move_pct: 0, sector_move_pct: 0, idiosyncratic_move_pct: 0, sizing_contribution_pct: 0, attribution_notes: '' },
+    { id: 'DJ-2026-008', instrument_code: '000858', instrument_name: 'Wuliangye Yibin', direction: 'bullish', sector: 'Consumer', status: 'planned', decision_date: '2026-05-01', entry_date: '', exit_date: '', thesis_snapshot: 'Premium baijiu demand structural. Channel inventory destocked.', thesis_quality_score: 60, market_confirmation_score: 45, risk_execution_score: 40, signal_score: 0, ev_quality: 'marginal', entry_price: 145.00, exit_price: 0, target_price: 170.00, stop_price: 130.00, risk_budget_pct: 6.5, position_size_pct: 0, decision_level: 'watch', tags: ['consumer', 'baijiu'], review_date: '2026-06-01', time_stop_date: '', exit_reason: '', actual_return_pct: 0, r_multiple: 0, outcome_category: '', process_score: 0, review_notes: '', market_move_pct: 0, sector_move_pct: 0, idiosyncratic_move_pct: 0, sizing_contribution_pct: 0, attribution_notes: '' },
+    { id: 'DJ-2026-009', instrument_code: 'AMZN', instrument_name: 'Amazon.com Inc', direction: 'bullish', sector: 'Technology', status: 'reviewed', decision_date: '2026-01-10', entry_date: '2026-01-12', exit_date: '2026-03-25', thesis_snapshot: 'AWS re-acceleration on AI workload migration. Retail margin expansion.', thesis_quality_score: 78, market_confirmation_score: 72, risk_execution_score: 72, signal_score: 78, ev_quality: 'positive_ev', entry_price: 195.00, exit_price: 210.00, target_price: 220.00, stop_price: 178.00, risk_budget_pct: 2.0, position_size_pct: 8.0, decision_level: 'action', tags: ['cloud', 'ai', 'retail'], review_date: '2026-04-10', time_stop_date: '2026-05-12', exit_reason: 'time_stop', actual_return_pct: 7.69, r_multiple: 0.88, outcome_category: 'time_stop', process_score: 6.0, review_notes: 'Time stop triggered before thesis fully played out.', market_move_pct: 4.0, sector_move_pct: 2.5, idiosyncratic_move_pct: 1.19, sizing_contribution_pct: 0.62, attribution_notes: 'Positive return but R below 1.0 due to early exit.' },
+    { id: 'DJ-2026-010', instrument_code: '002475', instrument_name: 'Luxshare Precision', direction: 'bullish', sector: 'Technology', status: 'exited', decision_date: '2026-03-10', entry_date: '2026-03-12', exit_date: '2026-04-30', thesis_snapshot: 'Apple supply chain share gains accelerating. New product categories.', thesis_quality_score: 65, market_confirmation_score: 58, risk_execution_score: 55, signal_score: 60, ev_quality: 'marginal', entry_price: 38.50, exit_price: 35.20, target_price: 45.00, stop_price: 35.00, risk_budget_pct: 2.0, position_size_pct: 5.0, decision_level: 'action', tags: ['apple-supply-chain', 'manufacturing'], review_date: '2026-05-15', time_stop_date: '2026-06-12', exit_reason: 'opportunity_cost', actual_return_pct: -8.57, r_multiple: -0.94, outcome_category: '', process_score: 0, review_notes: '', market_move_pct: -2.0, sector_move_pct: -3.0, idiosyncratic_move_pct: -3.57, sizing_contribution_pct: -0.43, attribution_notes: 'Rotated to better opportunity.' },
+  ],
+};
+
+function renderJournalUI(result) {
+  const { decisions, alerts, calibration, attribution } = result;
+
+  // Summary counts
+  const counts = { planned: 0, active: 0, exited: 0, invalidated: 0, reviewed: 0 };
+  decisions.forEach(d => { if (counts.hasOwnProperty(d.status)) counts[d.status]++; });
+  document.getElementById('jrn-total').textContent = decisions.length;
+  document.getElementById('jrn-active').textContent = counts.active;
+  document.getElementById('jrn-exited').textContent = counts.exited;
+  document.getElementById('jrn-reviewed').textContent = counts.reviewed;
+  document.getElementById('jrn-invalidated').textContent = counts.invalidated;
+  document.getElementById('jrn-planned').textContent = counts.planned;
+
+  // Calibration summary
+  document.getElementById('jrn-win-rate').textContent = calibration.overall_win_rate.toFixed(1) + '%';
+  const avgRetEl = document.getElementById('jrn-avg-return');
+  avgRetEl.textContent = (calibration.overall_avg_return >= 0 ? '+' : '') + calibration.overall_avg_return.toFixed(2) + '%';
+  avgRetEl.className = 'metric-value ' + (calibration.overall_avg_return > 0 ? 'positive' : calibration.overall_avg_return < 0 ? 'negative' : '');
+  document.getElementById('jrn-avg-r').textContent = calibration.overall_avg_r_multiple.toFixed(2);
+
+  // Calibration table
+  const calTbody = document.getElementById('calibration-tbody');
+  calTbody.innerHTML = calibration.buckets.map(b => {
+    if (b.decision_count === 0) return `<tr><td>${escHtml(b.score_range)}</td><td>0</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>`;
+    const rStr = b.avg_r_multiple !== 0 ? b.avg_r_multiple.toFixed(2) : '-';
+    return `<tr>
+      <td>${escHtml(b.score_range)}</td><td>${b.decision_count}</td>
+      <td>${b.win_rate.toFixed(1)}%</td>
+      <td class="${b.avg_return_pct > 0 ? 'positive' : b.avg_return_pct < 0 ? 'negative' : ''}">${b.avg_return_pct >= 0 ? '+' : ''}${b.avg_return_pct.toFixed(2)}%</td>
+      <td>${rStr}</td><td>${b.process_error_count}</td>
+    </tr>`;
+  }).join('');
+
+  // Alerts
+  const alertsDiv = document.getElementById('journal-alerts');
+  if (alerts.length === 0) {
+    alertsDiv.innerHTML = '<div class="note-item" style="color:var(--green)">No lifecycle alerts — all decisions are clean.</div>';
+  } else {
+    alertsDiv.innerHTML = alerts.map(a => {
+      const cls = a.severity === 'error' ? 'blocker-item' : 'note-item';
+      return `<div class="${cls}">[${a.severity.toUpperCase()}] ${escHtml(a.message)}</div>`;
+    }).join('');
+  }
+
+  // Decisions table
+  const decTbody = document.getElementById('decisions-tbody');
+  decTbody.innerHTML = decisions.map(d => {
+    const retStr = d.actual_return_pct !== 0 ? (d.actual_return_pct >= 0 ? '+' : '') + d.actual_return_pct.toFixed(2) + '%' : '-';
+    const rStr = d.r_multiple !== 0 ? d.r_multiple.toFixed(2) : '-';
+    const scoreStr = d.signal_score > 0 ? d.signal_score.toFixed(0) : '-';
+    const retCls = d.actual_return_pct > 0 ? 'positive' : d.actual_return_pct < 0 ? 'negative' : '';
+    const statusCls = d.status === 'active' ? 'status-active' : d.status === 'reviewed' ? 'status-reviewed' : d.status === 'invalidated' ? 'status-invalidated' : '';
+    return `<tr>
+      <td>${escHtml(d.id)}</td><td>${escHtml(d.instrument_code)}</td>
+      <td class="${statusCls}">${escHtml(d.status)}</td><td>${escHtml(d.direction)}</td>
+      <td>${d.entry_price > 0 ? d.entry_price.toFixed(2) : '-'}</td>
+      <td>${d.exit_price > 0 ? d.exit_price.toFixed(2) : '-'}</td>
+      <td class="${retCls}">${retStr}</td><td>${rStr}</td><td>${scoreStr}</td>
+      <td style="font-size:11px;color:var(--text-secondary)">${escHtml(d.tags.join(', '))}</td>
+    </tr>`;
+  }).join('');
+
+  // Attribution table
+  const attrPanel = document.getElementById('journal-attribution-panel');
+  if (attribution.length === 0) {
+    attrPanel.style.display = 'none';
+  } else {
+    attrPanel.style.display = '';
+    const attrTbody = document.getElementById('attribution-tbody');
+    attrTbody.innerHTML = attribution.map(a => {
+      const fmt = v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+      const cls = v => v > 0 ? 'positive' : v < 0 ? 'negative' : '';
+      return `<tr>
+        <td>${escHtml(a.decision_id)}</td><td>${escHtml(a.instrument_code)}</td>
+        <td class="${cls(a.total_return_pct)}">${fmt(a.total_return_pct)}</td>
+        <td class="${cls(a.market_move_pct)}">${fmt(a.market_move_pct)}</td>
+        <td class="${cls(a.sector_move_pct)}">${fmt(a.sector_move_pct)}</td>
+        <td class="${cls(a.idiosyncratic_move_pct)}">${fmt(a.idiosyncratic_move_pct)}</td>
+        <td class="${cls(a.sizing_contribution_pct)}">${fmt(a.sizing_contribution_pct)}</td>
+        <td class="${cls(a.residual_pct)}">${fmt(a.residual_pct)}</td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+function runJournalAnalysis() {
+  const editor = document.getElementById('journal-editor');
+  let data;
+  try {
+    data = JSON.parse(editor.value);
+  } catch (e) {
+    alert('Invalid JSON: ' + e.message);
+    return;
+  }
+  const result = journalAnalyze(data);
+  renderJournalUI(result);
+  window._lastJournalResult = result;
+}
+
+// Wire journal tab
+document.addEventListener('DOMContentLoaded', () => {
+  const btnLoad = document.getElementById('btn-journal-load');
+  const btnAnalyze = document.getElementById('btn-journal-analyze');
+  const btnCopy = document.getElementById('btn-journal-copy');
+
+  if (btnLoad) {
+    btnLoad.addEventListener('click', () => {
+      document.getElementById('journal-editor').value = JSON.stringify(JOURNAL_EXAMPLE, null, 2);
+      runJournalAnalysis();
+    });
+  }
+  if (btnAnalyze) {
+    btnAnalyze.addEventListener('click', runJournalAnalysis);
+  }
+  if (btnCopy) {
+    btnCopy.addEventListener('click', () => {
+      if (window._lastJournalResult)
+        navigator.clipboard.writeText(JSON.stringify(window._lastJournalResult, null, 2)).catch(() => {});
+    });
+  }
+
+  // Add journal example to EXAMPLES gallery
+  if (typeof EXAMPLES !== 'undefined') {
+    EXAMPLES.decision_journal = {
+      name: 'Decision Journal',
+      type: 'journal',
+      description: 'Multi-decision journal with 10 decisions across active/exited/invalidated/reviewed/planned states. Demonstrates calibration buckets and attribution.',
+      data: JOURNAL_EXAMPLE,
     };
     populateExamples();
   }

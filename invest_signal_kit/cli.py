@@ -58,6 +58,27 @@ def main(argv=None) -> int:
     p_batch.add_argument("--format", choices=["json", "markdown", "md"], default="json",
                          help="Output format (default: json)")
 
+    # --- journal ---
+    p_journal = sub.add_parser("journal", help="Run decision journal analysis on a journal JSON")
+    p_journal.add_argument("file", help="Path to decision journal JSON file")
+    p_journal.add_argument("--output", "-o", help="Output file path (default: stdout)")
+    p_journal.add_argument("--format", choices=["json", "markdown", "md"], default="json",
+                           help="Output format (default: json)")
+
+    # --- review ---
+    p_review = sub.add_parser("review", help="Review a decision journal for process adherence")
+    p_review.add_argument("file", help="Path to decision journal JSON file")
+    p_review.add_argument("--output", "-o", help="Output file path (default: stdout)")
+    p_review.add_argument("--format", choices=["json", "markdown", "md"], default="json",
+                          help="Output format (default: json)")
+
+    # --- calibrate ---
+    p_cal = sub.add_parser("calibrate", help="Calibrate decision scores against realized outcomes")
+    p_cal.add_argument("file", help="Path to decision journal JSON file")
+    p_cal.add_argument("--output", "-o", help="Output file path (default: stdout)")
+    p_cal.add_argument("--format", choices=["json", "markdown", "md"], default="json",
+                       help="Output format (default: json)")
+
     # --- serve ---
     p_serve = sub.add_parser("serve", help="Serve the web UI locally")
     p_serve.add_argument("--port", type=int, default=8765, help="Port to listen on (default: 8765)")
@@ -75,6 +96,18 @@ def main(argv=None) -> int:
     if args.command == "batch":
         return _cmd_batch(args.files, getattr(args, "output", None),
                           getattr(args, "format", "json"))
+
+    if args.command == "journal":
+        return _cmd_journal(args.file, getattr(args, "output", None),
+                            getattr(args, "format", "json"))
+
+    if args.command == "review":
+        return _cmd_review(args.file, getattr(args, "output", None),
+                           getattr(args, "format", "json"))
+
+    if args.command == "calibrate":
+        return _cmd_calibrate(args.file, getattr(args, "output", None),
+                              getattr(args, "format", "json"))
 
     try:
         obj, kind = load_json_file(args.file)
@@ -355,6 +388,189 @@ def _cmd_batch(files: list, output: str | None, fmt: str) -> int:
         print(out)
 
     return 0 if results else 1
+
+
+def _cmd_journal(file_path: str, output: str | None, fmt: str) -> int:
+    """Run full decision journal analysis."""
+    from .journal import (
+        calibrate_scores,
+        compute_attribution,
+        load_journal,
+        render_journal_markdown,
+        validate_lifecycle,
+        _result_to_dict,
+    )
+
+    try:
+        text = Path(file_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        print(f"Error: Invalid JSON: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        decisions = load_journal(data)
+    except (ValueError, KeyError, TypeError) as exc:
+        print(f"Error loading journal: {exc}", file=sys.stderr)
+        return 1
+
+    if not decisions:
+        print("Error: no decisions found in journal file", file=sys.stderr)
+        return 1
+
+    alerts = validate_lifecycle(decisions)
+    calibration = calibrate_scores(decisions)
+    attributions = compute_attribution(decisions)
+
+    if fmt in ("markdown", "md"):
+        out = render_journal_markdown(decisions, alerts, calibration, attributions)
+    else:
+        result = {
+            "decisions": [_result_to_dict(d) for d in decisions],
+            "alerts": [_result_to_dict(a) for a in alerts],
+            "calibration": _result_to_dict(calibration),
+            "attribution": [_result_to_dict(a) for a in attributions],
+        }
+        out = json.dumps(result, indent=2, ensure_ascii=False)
+
+    if output:
+        Path(output).write_text(out, encoding="utf-8")
+        print(f"Written to {output}")
+    else:
+        print(out)
+    return 0
+
+
+def _cmd_review(file_path: str, output: str | None, fmt: str) -> int:
+    """Review decisions for process adherence."""
+    from .journal import (
+        load_journal,
+        review_decision,
+        _result_to_dict,
+    )
+
+    try:
+        text = Path(file_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        print(f"Error: Invalid JSON: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        decisions = load_journal(data)
+    except (ValueError, KeyError, TypeError) as exc:
+        print(f"Error loading journal: {exc}", file=sys.stderr)
+        return 1
+
+    if not decisions:
+        print("Error: no decisions found in journal file", file=sys.stderr)
+        return 1
+
+    reviews = [review_decision(d) for d in decisions]
+
+    if fmt in ("markdown", "md"):
+        lines = ["# Decision Process Review", ""]
+        for r in reviews:
+            lines.append(f"## {r.decision_id} ({r.instrument_code})")
+            lines.append(f"- **Outcome:** {r.outcome_category or 'pending'}")
+            lines.append(f"- **Return:** {r.actual_return_pct:+.2f}%")
+            lines.append(f"- **R-Multiple:** {r.r_multiple:.2f}")
+            lines.append(f"- **Process Score:** {r.process_score:.1f}/10")
+            if r.process_errors:
+                lines.append("- **Process Errors:**")
+                for e in r.process_errors:
+                    lines.append(f"  - {e}")
+            if r.notes:
+                lines.append(f"- **Notes:** {r.notes}")
+            lines.append("")
+        lines.append("---")
+        lines.append("*Generated by invest-signal-kit review. Not investment advice.*")
+        out = "\n".join(lines)
+    else:
+        out = json.dumps([_result_to_dict(r) for r in reviews], indent=2, ensure_ascii=False)
+
+    if output:
+        Path(output).write_text(out, encoding="utf-8")
+        print(f"Written to {output}")
+    else:
+        print(out)
+    return 0
+
+
+def _cmd_calibrate(file_path: str, output: str | None, fmt: str) -> int:
+    """Calibrate decision scores against realized outcomes."""
+    from .journal import (
+        calibrate_scores,
+        load_journal,
+        render_journal_markdown,
+        _result_to_dict,
+    )
+
+    try:
+        text = Path(file_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        print(f"Error: Invalid JSON: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        decisions = load_journal(data)
+    except (ValueError, KeyError, TypeError) as exc:
+        print(f"Error loading journal: {exc}", file=sys.stderr)
+        return 1
+
+    if not decisions:
+        print("Error: no decisions found in journal file", file=sys.stderr)
+        return 1
+
+    calibration = calibrate_scores(decisions)
+
+    if fmt in ("markdown", "md"):
+        lines = ["# Score Calibration Report", ""]
+        lines.append(f"**Total Decisions:** {calibration.total_decisions}")
+        lines.append(f"**Reviewed Decisions:** {calibration.reviewed_decisions}")
+        lines.append(f"**Overall Win Rate:** {calibration.overall_win_rate:.1f}%")
+        lines.append(f"**Overall Avg Return:** {calibration.overall_avg_return:+.2f}%")
+        if calibration.overall_avg_r_multiple != 0:
+            lines.append(f"**Overall Avg R-Multiple:** {calibration.overall_avg_r_multiple:.2f}")
+        lines.append("")
+        lines.append("| Score Bucket | Count | Win Rate | Avg Return | Avg R | Process Errors |")
+        lines.append("|-------------|-------|----------|------------|-------|----------------|")
+        for b in calibration.buckets:
+            if b.decision_count == 0:
+                lines.append(f"| {b.score_range} | 0 | - | - | - | - |")
+            else:
+                r_str = f"{b.avg_r_multiple:.2f}" if b.avg_r_multiple != 0 else "-"
+                lines.append(
+                    f"| {b.score_range} | {b.decision_count} "
+                    f"| {b.win_rate:.1f}% | {b.avg_return_pct:+.2f}% "
+                    f"| {r_str} | {b.process_error_count} |"
+                )
+        lines.append("")
+        lines.append("---")
+        lines.append("*Generated by invest-signal-kit calibrate. Not investment advice.*")
+        out = "\n".join(lines)
+    else:
+        out = json.dumps(_result_to_dict(calibration), indent=2, ensure_ascii=False)
+
+    if output:
+        Path(output).write_text(out, encoding="utf-8")
+        print(f"Written to {output}")
+    else:
+        print(out)
+    return 0
 
 
 def _cmd_serve(port: int, bind: str) -> int:

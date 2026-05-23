@@ -1817,5 +1817,579 @@ class TestCLIMissingFile(unittest.TestCase):
         self.assertEqual(ret, 1)
 
 
+# =========================================================================
+# Decision Journal Tests
+# =========================================================================
+
+class TestJournalLoading(unittest.TestCase):
+    """Test journal loading from JSON."""
+
+    def test_load_decision(self):
+        from invest_signal_kit.journal import load_decision
+        d = load_decision({"id": "J-001", "instrument_code": "AAPL", "status": "active"})
+        self.assertEqual(d.id, "J-001")
+        self.assertEqual(d.instrument_code, "AAPL")
+        self.assertEqual(d.status, "active")
+
+    def test_load_decision_defaults(self):
+        from invest_signal_kit.journal import load_decision
+        d = load_decision({})
+        self.assertEqual(d.id, "")
+        self.assertEqual(d.status, "planned")
+        self.assertEqual(d.direction, "bullish")
+        self.assertEqual(d.entry_price, 0.0)
+
+    def test_load_journal_dict_format(self):
+        from invest_signal_kit.journal import load_journal
+        data = {"decisions": [{"id": "A"}, {"id": "B"}]}
+        decisions = load_journal(data)
+        self.assertEqual(len(decisions), 2)
+        self.assertEqual(decisions[0].id, "A")
+        self.assertEqual(decisions[1].id, "B")
+
+    def test_load_journal_list_format(self):
+        from invest_signal_kit.journal import load_journal
+        data = [{"id": "X"}, {"id": "Y"}]
+        decisions = load_journal(data)
+        self.assertEqual(len(decisions), 2)
+
+    def test_load_journal_empty(self):
+        from invest_signal_kit.journal import load_journal
+        decisions = load_journal({"decisions": []})
+        self.assertEqual(len(decisions), 0)
+
+    def test_decision_tags_loaded(self):
+        from invest_signal_kit.journal import load_decision
+        d = load_decision({"tags": ["macro", "tech"]})
+        self.assertEqual(d.tags, ["macro", "tech"])
+
+    def test_decision_numeric_fields(self):
+        from invest_signal_kit.journal import load_decision
+        d = load_decision({"entry_price": "150.5", "risk_budget_pct": "2.5"})
+        self.assertEqual(d.entry_price, 150.5)
+        self.assertEqual(d.risk_budget_pct, 2.5)
+
+
+class TestLifecycleValidation(unittest.TestCase):
+    """Test lifecycle validation rules."""
+
+    def test_active_missing_exit(self):
+        from invest_signal_kit.journal import Decision, validate_lifecycle
+        d = Decision(id="J-1", status="active", instrument_code="AAPL")
+        alerts = validate_lifecycle([d], today="2026-05-23")
+        rules = {a.rule for a in alerts}
+        self.assertIn("active_decision_missing_exit", rules)
+
+    def test_active_with_exit_date_no_alert(self):
+        from invest_signal_kit.journal import Decision, validate_lifecycle
+        d = Decision(id="J-1", status="active", exit_date="2026-06-01")
+        alerts = validate_lifecycle([d], today="2026-05-23")
+        rules = {a.rule for a in alerts}
+        self.assertNotIn("active_decision_missing_exit", rules)
+
+    def test_active_with_time_stop_no_alert(self):
+        from invest_signal_kit.journal import Decision, validate_lifecycle
+        d = Decision(id="J-1", status="active", time_stop_date="2026-06-01")
+        alerts = validate_lifecycle([d], today="2026-05-23")
+        rules = {a.rule for a in alerts}
+        self.assertNotIn("active_decision_missing_exit", rules)
+
+    def test_expired_review(self):
+        from invest_signal_kit.journal import Decision, validate_lifecycle
+        d = Decision(id="J-1", status="exited", review_date="2026-05-01", instrument_code="AAPL")
+        alerts = validate_lifecycle([d], today="2026-05-23")
+        rules = {a.rule for a in alerts}
+        self.assertIn("expired_review", rules)
+
+    def test_reviewed_no_expired_alert(self):
+        from invest_signal_kit.journal import Decision, validate_lifecycle
+        d = Decision(id="J-1", status="reviewed", review_date="2026-05-01")
+        alerts = validate_lifecycle([d], today="2026-05-23")
+        rules = {a.rule for a in alerts}
+        self.assertNotIn("expired_review", rules)
+
+    def test_oversized_risk(self):
+        from invest_signal_kit.journal import Decision, validate_lifecycle
+        d = Decision(id="J-1", status="active", risk_budget_pct=6.5, instrument_code="AAPL")
+        alerts = validate_lifecycle([d], today="2026-05-23")
+        rules = {a.rule for a in alerts}
+        self.assertIn("oversized_risk", rules)
+
+    def test_risk_under_5_no_alert(self):
+        from invest_signal_kit.journal import Decision, validate_lifecycle
+        d = Decision(id="J-1", status="active", risk_budget_pct=3.0, exit_date="2026-06-01")
+        alerts = validate_lifecycle([d], today="2026-05-23")
+        rules = {a.rule for a in alerts}
+        self.assertNotIn("oversized_risk", rules)
+
+    def test_stale_thesis(self):
+        from invest_signal_kit.journal import Decision, validate_lifecycle
+        d = Decision(id="J-1", status="planned", decision_date="2026-01-01", instrument_code="AAPL")
+        alerts = validate_lifecycle([d], today="2026-05-23")
+        rules = {a.rule for a in alerts}
+        self.assertIn("stale_thesis", rules)
+
+    def test_missing_review_on_exited(self):
+        from invest_signal_kit.journal import Decision, validate_lifecycle
+        d = Decision(id="J-1", status="exited", instrument_code="AAPL", thesis_snapshot="test")
+        alerts = validate_lifecycle([d], today="2026-05-23")
+        rules = {a.rule for a in alerts}
+        self.assertIn("missing_review", rules)
+
+    def test_invalid_status(self):
+        from invest_signal_kit.journal import Decision, validate_lifecycle
+        d = Decision(id="J-1", status="bogus", instrument_code="AAPL")
+        alerts = validate_lifecycle([d], today="2026-05-23")
+        rules = {a.rule for a in alerts}
+        self.assertIn("invalid_status", rules)
+
+    def test_missing_thesis_on_active(self):
+        from invest_signal_kit.journal import Decision, validate_lifecycle
+        d = Decision(id="J-1", status="active", exit_date="2026-06-01", instrument_code="AAPL")
+        alerts = validate_lifecycle([d], today="2026-05-23")
+        rules = {a.rule for a in alerts}
+        self.assertIn("missing_thesis", rules)
+
+    def test_thesis_invalidated_not_exited(self):
+        from invest_signal_kit.journal import Decision, validate_lifecycle
+        d = Decision(id="J-1", status="invalidated", instrument_code="AAPL",
+                     thesis_snapshot="test", outcome_category="thesis_broken")
+        alerts = validate_lifecycle([d], today="2026-05-23")
+        rules = {a.rule for a in alerts}
+        self.assertIn("thesis_invalidated_not_exited", rules)
+
+    def test_stop_breached_detection(self):
+        from invest_signal_kit.journal import Decision, validate_lifecycle
+        d = Decision(id="J-1", status="active", direction="bullish",
+                     entry_price=100, stop_price=90, exit_price=85,
+                     instrument_code="AAPL")
+        alerts = validate_lifecycle([d], today="2026-05-23")
+        rules = {a.rule for a in alerts}
+        self.assertIn("stop_breached_not_exited", rules)
+
+    def test_clean_decisions_no_alerts(self):
+        from invest_signal_kit.journal import Decision, validate_lifecycle
+        d = Decision(
+            id="J-1", status="reviewed", instrument_code="AAPL",
+            thesis_snapshot="test thesis", decision_date="2026-04-01",
+            entry_date="2026-04-05", exit_date="2026-05-01",
+            outcome_category="hit_target", risk_budget_pct=2.0,
+        )
+        alerts = validate_lifecycle([d], today="2026-05-23")
+        self.assertEqual(alerts, [])
+
+
+class TestReviewDecision(unittest.TestCase):
+    """Test decision review logic."""
+
+    def test_review_infers_outcome_from_exit_reason(self):
+        from invest_signal_kit.journal import Decision, review_decision
+        d = Decision(id="J-1", exit_reason="hit_target")
+        result = review_decision(d)
+        self.assertEqual(result.outcome_category, "hit_target")
+
+    def test_review_hit_stop(self):
+        from invest_signal_kit.journal import Decision, review_decision
+        d = Decision(id="J-1", exit_reason="hit_stop")
+        result = review_decision(d)
+        self.assertEqual(result.outcome_category, "hit_stop")
+
+    def test_review_time_stop(self):
+        from invest_signal_kit.journal import Decision, review_decision
+        d = Decision(id="J-1", exit_reason="time_stop")
+        result = review_decision(d)
+        self.assertEqual(result.outcome_category, "time_stop")
+
+    def test_review_thesis_broken(self):
+        from invest_signal_kit.journal import Decision, review_decision
+        d = Decision(id="J-1", exit_reason="thesis_broken")
+        result = review_decision(d)
+        self.assertEqual(result.outcome_category, "thesis_broken")
+
+    def test_review_process_errors_detected(self):
+        from invest_signal_kit.journal import Decision, review_decision
+        d = Decision(id="J-1", status="exited", exit_reason="manual")
+        result = review_decision(d)
+        self.assertIn("no_thesis_snapshot", result.process_errors)
+        self.assertIn("no_stop_defined", result.process_errors)
+        self.assertIn("no_target_defined", result.process_errors)
+
+    def test_review_clean_decision_no_errors(self):
+        from invest_signal_kit.journal import Decision, review_decision
+        d = Decision(
+            id="J-1", status="exited", exit_reason="hit_target",
+            thesis_snapshot="test", stop_price=90, target_price=120,
+            risk_budget_pct=2.0, exit_date="2026-05-01",
+        )
+        result = review_decision(d)
+        self.assertEqual(result.process_errors, [])
+
+    def test_review_oversized_risk_detected(self):
+        from invest_signal_kit.journal import Decision, review_decision
+        d = Decision(
+            id="J-1", status="active", thesis_snapshot="test",
+            stop_price=90, target_price=120, risk_budget_pct=6.0,
+            review_date="2026-06-01", time_stop_date="2026-07-01",
+        )
+        result = review_decision(d)
+        self.assertIn("oversized_risk_budget", result.process_errors)
+
+    def test_review_explicit_outcome_overrides_inference(self):
+        from invest_signal_kit.journal import Decision, review_decision
+        d = Decision(id="J-1", exit_reason="manual")
+        result = review_decision(d, outcome_category="process_adherence")
+        self.assertEqual(result.outcome_category, "process_adherence")
+
+    def test_review_explicit_return(self):
+        from invest_signal_kit.journal import Decision, review_decision
+        d = Decision(id="J-1", actual_return_pct=5.0)
+        result = review_decision(d, actual_return_pct=10.0)
+        self.assertEqual(result.actual_return_pct, 10.0)
+
+
+class TestCalibration(unittest.TestCase):
+    """Test score calibration."""
+
+    def test_calibration_empty(self):
+        from invest_signal_kit.journal import calibrate_scores
+        report = calibrate_scores([])
+        self.assertEqual(report.total_decisions, 0)
+        self.assertEqual(report.reviewed_decisions, 0)
+        self.assertEqual(len(report.buckets), 5)
+
+    def test_calibration_groups_by_score(self):
+        from invest_signal_kit.journal import Decision, calibrate_scores
+        decisions = [
+            Decision(id="A", status="reviewed", signal_score=80, actual_return_pct=10.0,
+                     outcome_category="hit_target"),
+            Decision(id="B", status="reviewed", signal_score=40, actual_return_pct=-5.0,
+                     outcome_category="hit_stop"),
+        ]
+        report = calibrate_scores(decisions)
+        self.assertEqual(report.reviewed_decisions, 2)
+        # A goes to 80-100 bucket, B goes to 30-49 bucket
+        high_bucket = [b for b in report.buckets if "80-100" in b.score_range][0]
+        low_bucket = [b for b in report.buckets if "30-49" in b.score_range][0]
+        self.assertEqual(high_bucket.decision_count, 1)
+        self.assertEqual(high_bucket.win_count, 1)
+        self.assertEqual(low_bucket.decision_count, 1)
+        self.assertEqual(low_bucket.win_count, 0)
+
+    def test_calibration_win_rate(self):
+        from invest_signal_kit.journal import Decision, calibrate_scores
+        decisions = [
+            Decision(id="A", status="reviewed", signal_score=70, actual_return_pct=10.0,
+                     outcome_category="hit_target"),
+            Decision(id="B", status="reviewed", signal_score=72, actual_return_pct=5.0,
+                     outcome_category="hit_target"),
+            Decision(id="C", status="reviewed", signal_score=75, actual_return_pct=-3.0,
+                     outcome_category="hit_stop"),
+        ]
+        report = calibrate_scores(decisions)
+        self.assertAlmostEqual(report.overall_win_rate, 66.7, places=1)
+
+    def test_calibration_avg_return(self):
+        from invest_signal_kit.journal import Decision, calibrate_scores
+        decisions = [
+            Decision(id="A", status="reviewed", signal_score=70, actual_return_pct=10.0,
+                     outcome_category="hit_target", r_multiple=2.0),
+            Decision(id="B", status="reviewed", signal_score=72, actual_return_pct=-5.0,
+                     outcome_category="hit_stop", r_multiple=-1.0),
+        ]
+        report = calibrate_scores(decisions)
+        self.assertAlmostEqual(report.overall_avg_return, 2.5, places=1)
+        self.assertAlmostEqual(report.overall_avg_r_multiple, 0.5, places=1)
+
+    def test_calibration_ignores_non_reviewed(self):
+        from invest_signal_kit.journal import Decision, calibrate_scores
+        decisions = [
+            Decision(id="A", status="active", signal_score=70),
+            Decision(id="B", status="planned", signal_score=80),
+            Decision(id="C", status="reviewed", signal_score=60, actual_return_pct=5.0,
+                     outcome_category="hit_target"),
+        ]
+        report = calibrate_scores(decisions)
+        self.assertEqual(report.total_decisions, 3)
+        self.assertEqual(report.reviewed_decisions, 1)
+
+    def test_calibration_fallback_score(self):
+        from invest_signal_kit.journal import Decision, calibrate_scores
+        # No signal_score, falls back to average of three scores
+        d = Decision(
+            id="A", status="reviewed", signal_score=0,
+            thesis_quality_score=60, market_confirmation_score=70, risk_execution_score=80,
+            actual_return_pct=5.0, outcome_category="hit_target",
+        )
+        report = calibrate_scores([d])
+        # effective score = (60+70+80)/3 = 70 -> 65-79 bucket
+        b70 = [b for b in report.buckets if "65-79" in b.score_range][0]
+        self.assertEqual(b70.decision_count, 1)
+
+
+class TestAttribution(unittest.TestCase):
+    """Test performance attribution."""
+
+    def test_attribution_basic(self):
+        from invest_signal_kit.journal import Decision, compute_attribution
+        d = Decision(
+            id="J-1", status="reviewed", instrument_code="AAPL",
+            actual_return_pct=10.0, market_move_pct=5.0,
+            sector_move_pct=3.0, idiosyncratic_move_pct=2.0,
+            position_size_pct=8.0, outcome_category="hit_target",
+        )
+        results = compute_attribution([d])
+        self.assertEqual(len(results), 1)
+        a = results[0]
+        self.assertEqual(a.total_return_pct, 10.0)
+        self.assertEqual(a.market_move_pct, 5.0)
+        self.assertEqual(a.sector_move_pct, 3.0)
+        self.assertEqual(a.idiosyncratic_move_pct, 2.0)
+        self.assertAlmostEqual(a.residual_pct, 0.0, places=1)
+        self.assertAlmostEqual(a.sizing_contribution_pct, 0.8, places=1)
+
+    def test_attribution_residual(self):
+        from invest_signal_kit.journal import Decision, compute_attribution
+        d = Decision(
+            id="J-1", status="reviewed", actual_return_pct=10.0,
+            market_move_pct=3.0, sector_move_pct=2.0,
+            idiosyncratic_move_pct=1.0, outcome_category="hit_target",
+        )
+        results = compute_attribution([d])
+        # residual = 10 - (3+2+1) = 4
+        self.assertAlmostEqual(results[0].residual_pct, 4.0, places=1)
+
+    def test_attribution_ignores_non_reviewed(self):
+        from invest_signal_kit.journal import Decision, compute_attribution
+        d = Decision(id="J-1", status="active", actual_return_pct=5.0)
+        results = compute_attribution([d])
+        self.assertEqual(len(results), 0)
+
+    def test_attribution_empty(self):
+        from invest_signal_kit.journal import compute_attribution
+        results = compute_attribution([])
+        self.assertEqual(results, [])
+
+
+class TestJournalExample(unittest.TestCase):
+    """Test the decision_journal.json example."""
+
+    def test_example_loads(self):
+        from invest_signal_kit.journal import load_journal
+        data = json.loads((EXAMPLES / "decision_journal.json").read_text())
+        decisions = load_journal(data)
+        self.assertEqual(len(decisions), 10)
+
+    def test_example_has_all_statuses(self):
+        from invest_signal_kit.journal import load_journal
+        data = json.loads((EXAMPLES / "decision_journal.json").read_text())
+        decisions = load_journal(data)
+        statuses = {d.status for d in decisions}
+        self.assertIn("planned", statuses)
+        self.assertIn("active", statuses)
+        self.assertIn("exited", statuses)
+        self.assertIn("invalidated", statuses)
+        self.assertIn("reviewed", statuses)
+
+    def test_example_has_reviewed_decisions(self):
+        from invest_signal_kit.journal import load_journal, calibrate_scores
+        data = json.loads((EXAMPLES / "decision_journal.json").read_text())
+        decisions = load_journal(data)
+        report = calibrate_scores(decisions)
+        self.assertGreater(report.reviewed_decisions, 0)
+
+    def test_example_has_attribution(self):
+        from invest_signal_kit.journal import load_journal, compute_attribution
+        data = json.loads((EXAMPLES / "decision_journal.json").read_text())
+        decisions = load_journal(data)
+        attributions = compute_attribution(decisions)
+        self.assertGreater(len(attributions), 0)
+
+    def test_example_lifecycle_validation(self):
+        from invest_signal_kit.journal import load_journal, validate_lifecycle
+        data = json.loads((EXAMPLES / "decision_journal.json").read_text())
+        decisions = load_journal(data)
+        alerts = validate_lifecycle(decisions, today="2026-05-23")
+        # Should have some alerts (missing reviews, oversized risk, etc.)
+        self.assertGreater(len(alerts), 0)
+
+    def test_example_run_journal_analysis(self):
+        from invest_signal_kit.journal import run_journal_analysis
+        data = json.loads((EXAMPLES / "decision_journal.json").read_text())
+        result = run_journal_analysis(data)
+        self.assertIn("decisions", result)
+        self.assertIn("alerts", result)
+        self.assertIn("calibration", result)
+        self.assertIn("attribution", result)
+        self.assertEqual(len(result["decisions"]), 10)
+
+    def test_example_calibration_has_buckets(self):
+        from invest_signal_kit.journal import run_journal_analysis
+        data = json.loads((EXAMPLES / "decision_journal.json").read_text())
+        result = run_journal_analysis(data)
+        buckets = result["calibration"]["buckets"]
+        self.assertEqual(len(buckets), 5)
+        # At least one bucket should have decisions
+        total_in_buckets = sum(b["decision_count"] for b in buckets)
+        self.assertGreater(total_in_buckets, 0)
+
+
+class TestJournalCLI(unittest.TestCase):
+    """Test journal CLI commands."""
+
+    def test_journal_json_output(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["journal", str(EXAMPLES / "decision_journal.json")])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        data = json.loads(captured.getvalue())
+        self.assertIn("decisions", data)
+        self.assertIn("alerts", data)
+        self.assertIn("calibration", data)
+
+    def test_journal_markdown_output(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["journal", str(EXAMPLES / "decision_journal.json"), "--format", "markdown"])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        output = captured.getvalue()
+        self.assertIn("# Decision Journal Report", output)
+        self.assertIn("Score Calibration", output)
+
+    def test_journal_writes_file(self):
+        from invest_signal_kit.cli import main
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
+            outpath = f.name
+        try:
+            ret = main(["journal", str(EXAMPLES / "decision_journal.json"), "-o", outpath])
+            self.assertEqual(ret, 0)
+            data = json.loads(Path(outpath).read_text())
+            self.assertIn("decisions", data)
+        finally:
+            os.unlink(outpath)
+
+    def test_journal_missing_file(self):
+        from invest_signal_kit.cli import main
+        ret = main(["journal", "/tmp/no_such_journal.json"])
+        self.assertEqual(ret, 1)
+
+    def test_journal_invalid_json(self):
+        from invest_signal_kit.cli import main
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
+            f.write("{bad json")
+            f.flush()
+            path = f.name
+        try:
+            ret = main(["journal", path])
+            self.assertNotEqual(ret, 0)
+        finally:
+            os.unlink(path)
+
+    def test_review_json_output(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["review", str(EXAMPLES / "decision_journal.json")])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        data = json.loads(captured.getvalue())
+        self.assertIsInstance(data, list)
+        self.assertGreater(len(data), 0)
+
+    def test_review_markdown_output(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["review", str(EXAMPLES / "decision_journal.json"), "--format", "md"])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        self.assertIn("# Decision Process Review", captured.getvalue())
+
+    def test_calibrate_json_output(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["calibrate", str(EXAMPLES / "decision_journal.json")])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        data = json.loads(captured.getvalue())
+        self.assertIn("buckets", data)
+        self.assertIn("overall_win_rate", data)
+
+    def test_calibrate_markdown_output(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["calibrate", str(EXAMPLES / "decision_journal.json"), "--format", "md"])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        self.assertIn("# Score Calibration Report", captured.getvalue())
+
+    def test_review_missing_file(self):
+        from invest_signal_kit.cli import main
+        ret = main(["review", "/tmp/no_such_journal.json"])
+        self.assertEqual(ret, 1)
+
+    def test_calibrate_missing_file(self):
+        from invest_signal_kit.cli import main
+        ret = main(["calibrate", "/tmp/no_such_journal.json"])
+        self.assertEqual(ret, 1)
+
+
+class TestJournalMarkdown(unittest.TestCase):
+    """Test journal markdown rendering."""
+
+    def test_render_contains_sections(self):
+        from invest_signal_kit.journal import Decision, render_journal_markdown
+        decisions = [
+            Decision(id="J-1", instrument_code="AAPL", status="reviewed",
+                     entry_price=150, exit_price=165, actual_return_pct=10.0,
+                     signal_score=75, outcome_category="hit_target"),
+        ]
+        md = render_journal_markdown(decisions)
+        self.assertIn("# Decision Journal Report", md)
+        self.assertIn("Decisions", md)
+        self.assertIn("Not investment advice", md)
+
+    def test_render_with_alerts(self):
+        from invest_signal_kit.journal import Decision, LifecycleAlert, render_journal_markdown
+        alerts = [LifecycleAlert(rule="test", message="Test alert", severity="warning")]
+        md = render_journal_markdown([Decision(id="J-1", status="active")], alerts=alerts)
+        self.assertIn("Lifecycle Alerts", md)
+        self.assertIn("Test alert", md)
+
+    def test_render_with_calibration(self):
+        from invest_signal_kit.journal import Decision, CalibrationReport, CalibrationBucket, render_journal_markdown
+        cal = CalibrationReport(
+            reviewed_decisions=2, total_decisions=2,
+            overall_win_rate=50.0, overall_avg_return=2.5,
+            buckets=[CalibrationBucket(score_range="test", decision_count=2, win_count=1,
+                                       loss_count=1, win_rate=50.0, avg_return_pct=2.5)],
+        )
+        md = render_journal_markdown([Decision(id="J-1", status="reviewed")], calibration=cal)
+        self.assertIn("Score Calibration", md)
+
+
 if __name__ == "__main__":
     unittest.main()

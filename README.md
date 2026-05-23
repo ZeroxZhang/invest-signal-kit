@@ -1,6 +1,6 @@
 # invest-signal-kit
 
-A stdlib-only Python toolkit for structured, auditable investment signal analysis. Includes a professional finance framework with scorecards, scenario modeling, position sizing, portfolio risk management, and a browser-based workstation UI.
+A stdlib-only Python toolkit for structured, auditable investment signal analysis. Includes a professional finance framework with scorecards, scenario modeling, position sizing, portfolio risk management, a decision journal with lifecycle tracking and post-decision review, and a browser-based workstation UI.
 
 It does not pick stocks, automate trades, or promise returns. Its job is narrower: validate whether a research note has enough evidence, data-quality labeling, trigger conditions, invalidation conditions, and risk discipline before it is promoted from information to watch, candidate, or action.
 
@@ -20,6 +20,10 @@ The professional framework adds:
 - expected value / scenario model (bull/base/bear EV, payoff asymmetry)
 - position sizing helper (risk-budget based with confidence haircut)
 - decision readiness ladder (information → watch → candidate → action)
+- decision journal with lifecycle tracking (planned → active → exited → reviewed)
+- post-decision review with process adherence scoring
+- score calibration (compare initial scores to realized outcomes)
+- performance attribution (market, sector, idiosyncratic, sizing decomposition)
 
 ## Install
 
@@ -82,6 +86,15 @@ python3 -m invest_signal_kit memo examples/professional_signal.json --output mem
 
 # Launch the web UI workstation
 python3 -m invest_signal_kit serve --port 8765
+
+# Decision journal analysis
+python3 -m invest_signal_kit journal examples/decision_journal.json --format markdown
+
+# Review process adherence
+python3 -m invest_signal_kit review examples/decision_journal.json --format md
+
+# Calibrate scores against outcomes
+python3 -m invest_signal_kit calibrate examples/decision_journal.json --format md
 ```
 
 After installation, the console script is also available:
@@ -102,6 +115,9 @@ invest-signal-kit serve --port 8765
 | `memo` | Generate a Markdown decision memo from signal + framework inputs | `python3 -m invest_signal_kit memo examples/professional_signal.json -o memo.md` |
 | `portfolio` | Run portfolio risk analysis (exposures, limits, stress tests, candidates) | `python3 -m invest_signal_kit portfolio examples/portfolio_workflow.json` |
 | `batch` | Run framework analysis on multiple signal files at once | `python3 -m invest_signal_kit batch examples/etf_signal.json examples/stock_shift_signal.json` |
+| `journal` | Run full decision journal analysis (lifecycle, calibration, attribution) | `python3 -m invest_signal_kit journal examples/decision_journal.json` |
+| `review` | Review decisions for process adherence and errors | `python3 -m invest_signal_kit review examples/decision_journal.json` |
+| `calibrate` | Calibrate decision scores against realized outcomes | `python3 -m invest_signal_kit calibrate examples/decision_journal.json` |
 | `serve` | Launch the local browser workstation | `python3 -m invest_signal_kit serve --port 8765` |
 
 ## Practical Workflow

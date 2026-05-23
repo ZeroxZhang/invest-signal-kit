@@ -10,13 +10,14 @@
   <header>
     <div class="header-left">
       <h1>invest-signal-kit</h1>
-      <span class="version">v0.3.0</span>
+      <span class="version">v0.4.0</span>
     </div>
     <nav id="main-nav">
       <button class="nav-btn active" data-tab="signal-lab">Signal Lab</button>
       <button class="nav-btn" data-tab="scorecards">Scorecards</button>
       <button class="nav-btn" data-tab="scenario-sizing">Scenario &amp; Sizing</button>
       <button class="nav-btn" data-tab="portfolio">Portfolio</button>
+      <button class="nav-btn" data-tab="journal">Journal</button>
       <button class="nav-btn" data-tab="decision-memo">Decision Memo</button>
       <button class="nav-btn" data-tab="examples">Examples</button>
     </nav>
@@ -476,6 +477,106 @@
         <h2>Portfolio Blockers &amp; Warnings</h2>
         <div id="portfolio-blockers" class="blockers-list"></div>
         <div id="portfolio-warnings" class="notes-list"></div>
+      </div>
+    </section>
+
+    <!-- ===== Journal ===== -->
+    <section id="journal" class="tab-panel">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Decision Journal Workstation</h2>
+          <div class="btn-group">
+            <button id="btn-journal-load" class="btn btn-sm">Load Example</button>
+            <button id="btn-journal-analyze" class="btn btn-sm btn-primary">Analyze</button>
+            <button id="btn-journal-copy" class="btn btn-sm">Copy JSON</button>
+          </div>
+        </div>
+        <textarea id="journal-editor" spellcheck="false" placeholder="Paste decision journal JSON here (decisions array with lifecycle, thesis, risk, outcome, attribution fields)..."></textarea>
+      </div>
+
+      <!-- Journal Summary -->
+      <div class="journal-grid">
+        <div class="panel" id="journal-summary-panel">
+          <h2>Journal Summary</h2>
+          <div class="summary-metrics" id="journal-summary-metrics">
+            <div class="ev-metric"><span class="metric-label">Total</span><span class="metric-value" id="jrn-total">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Active</span><span class="metric-value" id="jrn-active">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Exited</span><span class="metric-value" id="jrn-exited">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Reviewed</span><span class="metric-value" id="jrn-reviewed">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Invalidated</span><span class="metric-value" id="jrn-invalidated">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Planned</span><span class="metric-value" id="jrn-planned">--</span></div>
+          </div>
+        </div>
+
+        <!-- Calibration Summary -->
+        <div class="panel" id="journal-calibration-panel">
+          <h2>Score Calibration</h2>
+          <div class="summary-metrics">
+            <div class="ev-metric"><span class="metric-label">Win Rate</span><span class="metric-value" id="jrn-win-rate">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Avg Return</span><span class="metric-value" id="jrn-avg-return">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Avg R-Multiple</span><span class="metric-value" id="jrn-avg-r">--</span></div>
+          </div>
+          <div class="table-container" style="margin-top:12px">
+            <table class="data-table" id="calibration-table">
+              <thead>
+                <tr><th>Score Bucket</th><th>Count</th><th>Win Rate</th><th>Avg Return</th><th>Avg R</th><th>Process Err</th></tr>
+              </thead>
+              <tbody id="calibration-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lifecycle Alerts -->
+      <div class="panel" id="journal-alerts-panel">
+        <h2>Lifecycle Alerts</h2>
+        <div id="journal-alerts" class="blockers-list"></div>
+      </div>
+
+      <!-- Decisions Table -->
+      <div class="panel">
+        <h2>Decisions</h2>
+        <div class="table-container">
+          <table class="data-table" id="decisions-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Instrument</th>
+                <th>Status</th>
+                <th>Direction</th>
+                <th>Entry</th>
+                <th>Exit</th>
+                <th>Return</th>
+                <th>R-Mult</th>
+                <th>Score</th>
+                <th>Tags</th>
+              </tr>
+            </thead>
+            <tbody id="decisions-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Attribution Table -->
+      <div class="panel" id="journal-attribution-panel">
+        <h2>Performance Attribution</h2>
+        <div class="table-container">
+          <table class="data-table" id="attribution-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Code</th>
+                <th>Total</th>
+                <th>Market</th>
+                <th>Sector</th>
+                <th>Idiosyncratic</th>
+                <th>Sizing</th>
+                <th>Residual</th>
+              </tr>
+            </thead>
+            <tbody id="attribution-tbody"></tbody>
+          </table>
+        </div>
       </div>
     </section>
 

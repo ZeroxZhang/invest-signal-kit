@@ -867,3 +867,34 @@ footer p {
 .stress-scenario.breach {
   border-color: var(--red-dim);
 }
+
+/* --- Journal Tab --- */
+.journal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+#journal-editor {
+  width: 100%;
+  min-height: 180px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  resize: vertical;
+}
+
+#journal-summary-panel .summary-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.data-table .status-active { color: var(--accent); font-weight: 600; }
+.data-table .status-reviewed { color: var(--green); font-weight: 600; }
+.data-table .status-invalidated { color: var(--red); font-weight: 600; }

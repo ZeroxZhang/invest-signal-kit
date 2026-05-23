@@ -62,6 +62,30 @@ Two panels for quantitative analysis.
 - See risk budget, raw/adjusted shares, position value, portfolio %, and risk/reward ratio
 - Confidence haircut automatically reduces size for lower-confidence trades
 
+### Portfolio
+
+Portfolio risk workstation with:
+- Holdings editor (paste or load example)
+- Portfolio summary (total value, cash, invested, total risk)
+- Risk budget utilization bar
+- Position exposure table
+- Sector exposure table
+- Candidate watchlist with pass/fail criteria
+- Stress test results
+- Portfolio blockers and warnings
+
+### Rebalance
+
+Trade plan generator with:
+- Rebalance plan editor (paste or load example)
+- Before/after portfolio summary (total value, cash, invested)
+- Transaction cost summary (commission, slippage, turnover)
+- Proposed order blotter with action, shares, value, cost, phase
+- Order rationale with blockers and warnings
+- Guardrail status table (position limits, sector limits, cash reserve, turnover)
+- Execution plan grouped by phase (immediate, wait-for-trigger, reduce-risk-first, blocked)
+- Side-by-side current vs projected position tables
+
 ### Decision Memo
 
 Generate a comprehensive Markdown decision memo that combines:
@@ -77,15 +101,18 @@ Click "Generate from Scorecards" to create a memo from the current scorecard and
 
 ### Example Gallery
 
-Pre-loaded examples demonstrating different signal types:
+Pre-loaded examples demonstrating different signal types and workflows:
 
 1. **ETF Candidate Signal**: valid ETF candidate with A/B evidence, trigger/invalidation, and risk controls
 2. **Stock Shift / Watch Signal**: event-driven signal at INFORMATION/WATCH level with mixed evidence
 3. **Professional Full Analysis**: complete signal with framework scorecard inputs, scenario model, and position sizing
 4. **Macro Context**: macro environment context (demonstrates macro validation)
 5. **Invalid Action Signal**: intentionally invalid action-level signal (demonstrates validation failures)
+6. **Portfolio Workflow**: multi-asset portfolio with policy, candidates, and stress scenarios
+7. **Decision Journal**: multi-decision journal with lifecycle, calibration, and attribution
+8. **Rebalance Trade Plan**: portfolio rebalance with targets, candidates, constraints, and cost assumptions
 
-Click any example card to load it into the Signal Lab. If the example includes framework data, the scorecards and scenario inputs are also populated.
+Click any example card to load it into the appropriate tab. Portfolio, journal, and rebalance examples load into their dedicated tabs with auto-analysis.
 
 ## Design Philosophy
 

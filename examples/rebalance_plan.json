@@ -1,0 +1,121 @@
+{
+    "holdings": [
+        {
+            "code": "NVDA",
+            "name": "NVIDIA Corp",
+            "asset_type": "stock",
+            "sector": "Technology",
+            "shares": 150,
+            "entry_price": 450.00,
+            "current_price": 820.00,
+            "stop_price": 720.00,
+            "direction": "long"
+        },
+        {
+            "code": "AAPL",
+            "name": "Apple Inc",
+            "asset_type": "stock",
+            "sector": "Technology",
+            "shares": 200,
+            "entry_price": 170.00,
+            "current_price": 195.00,
+            "stop_price": 175.00,
+            "direction": "long"
+        },
+        {
+            "code": "JPM",
+            "name": "JPMorgan Chase",
+            "asset_type": "stock",
+            "sector": "Financials",
+            "shares": 100,
+            "entry_price": 180.00,
+            "current_price": 210.00,
+            "stop_price": 190.00,
+            "direction": "long"
+        },
+        {
+            "code": "UNH",
+            "name": "UnitedHealth Group",
+            "asset_type": "stock",
+            "sector": "Healthcare",
+            "shares": 50,
+            "entry_price": 520.00,
+            "current_price": 540.00,
+            "stop_price": 490.00,
+            "direction": "long"
+        },
+        {
+            "code": "AMZN",
+            "name": "Amazon.com",
+            "asset_type": "stock",
+            "sector": "Consumer",
+            "shares": 80,
+            "entry_price": 150.00,
+            "current_price": 185.00,
+            "stop_price": 160.00,
+            "direction": "long"
+        }
+    ],
+    "cash": 75000.00,
+    "policy": {
+        "max_position_pct": 25.0,
+        "max_sector_pct": 40.0,
+        "max_risk_budget_pct": 8.0,
+        "min_cash_reserve_pct": 10.0,
+        "max_turnover_pct": 60.0,
+        "max_single_order_pct": 12.0,
+        "min_order_value": 1000.0,
+        "lot_size": 1,
+        "rebalance_threshold_pct": 3.0,
+        "watchlist_min_score": 60.0,
+        "sector_limits": {
+            "Technology": 35.0
+        }
+    },
+    "targets": [
+        {"code": "NVDA", "target_pct": 18.0},
+        {"code": "AAPL", "target_pct": 15.0},
+        {"code": "JPM", "target_pct": 12.0},
+        {"code": "UNH", "target_pct": 15.0},
+        {"code": "AMZN", "target_pct": 12.0}
+    ],
+    "candidates": [
+        {
+            "code": "LLY",
+            "name": "Eli Lilly & Co",
+            "direction": "bullish",
+            "asset_type": "stock",
+            "sector": "Healthcare",
+            "current_price": 780.00,
+            "stop_price": 700.00,
+            "signal_score": 78.0,
+            "action_level": "action",
+            "thesis_quality": 72.0,
+            "market_confirmation": 68.0,
+            "risk_execution": 65.0,
+            "ev_quality": "positive_ev",
+            "proposed_shares": 20
+        },
+        {
+            "code": "COIN",
+            "name": "Coinbase Global",
+            "direction": "bullish",
+            "asset_type": "stock",
+            "sector": "Financials",
+            "current_price": 220.00,
+            "stop_price": 180.00,
+            "signal_score": 42.0,
+            "action_level": "watch",
+            "thesis_quality": 35.0,
+            "market_confirmation": 40.0,
+            "risk_execution": 30.0,
+            "ev_quality": "negative_ev",
+            "proposed_shares": 50
+        }
+    ],
+    "costs": {
+        "commission_per_order": 1.00,
+        "slippage_bps": 5.0,
+        "min_commission": 1.00
+    }
+}

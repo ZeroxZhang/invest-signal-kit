@@ -898,3 +898,36 @@ footer p {
 .data-table .status-active { color: var(--accent); font-weight: 600; }
 .data-table .status-reviewed { color: var(--green); font-weight: 600; }
 .data-table .status-invalidated { color: var(--red); font-weight: 600; }
+
+/* Rebalance Tab */
+#rebal-editor {
+  width: 100%;
+  height: 160px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 12px;
+  resize: vertical;
+  tab-size: 2;
+}
+
+.rebal-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+.rebal-positions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .rebal-summary-grid { grid-template-columns: 1fr; }
+  .rebal-positions-grid { grid-template-columns: 1fr; }
+}

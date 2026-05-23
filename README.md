@@ -118,6 +118,7 @@ invest-signal-kit serve --port 8765
 | `journal` | Run full decision journal analysis (lifecycle, calibration, attribution) | `python3 -m invest_signal_kit journal examples/decision_journal.json` |
 | `review` | Review decisions for process adherence and errors | `python3 -m invest_signal_kit review examples/decision_journal.json` |
 | `calibrate` | Calibrate decision scores against realized outcomes | `python3 -m invest_signal_kit calibrate examples/decision_journal.json` |
+| `rebalance` | Generate rebalance/trade plan from holdings, targets, and candidates | `python3 -m invest_signal_kit rebalance examples/rebalance_plan.json` |
 | `serve` | Launch the local browser workstation | `python3 -m invest_signal_kit serve --port 8765` |
 
 ## Practical Workflow
@@ -317,7 +318,33 @@ The portfolio engine checks:
 
 Or use the **Portfolio** tab in the web UI to load, edit, and analyze portfolio data interactively.
 
-### 7. Batch Signal Analysis
+### 7. Rebalance / Trade Planning
+
+Generate a structured rebalance plan from current holdings, target allocations, and candidate signals:
+
+```bash
+# Generate rebalance plan (JSON output)
+python3 -m invest_signal_kit rebalance examples/rebalance_plan.json
+
+# Markdown report
+python3 -m invest_signal_kit rebalance examples/rebalance_plan.json --format markdown
+
+# Save to file
+python3 -m invest_signal_kit rebalance examples/rebalance_plan.json -o rebalance_plan.md
+```
+
+The rebalance engine:
+- Computes current portfolio weights and compares to targets
+- Generates BUY, SELL, TRIM, ADD, HOLD, or SKIP orders with deterministic rationale
+- Enforces guardrails: max position %, max sector %, min cash reserve, max turnover, lot size, min order value
+- Evaluates candidate signals against readiness gates (score, action level, EV quality)
+- Estimates transaction costs (commission + slippage)
+- Assigns execution phases: immediate, wait-for-trigger, reduce-risk-first, blocked
+- Shows before/after portfolio exposure, sector weights, and guardrail status
+
+Or use the **Rebalance** tab in the web UI to load, edit, and generate trade plans interactively.
+
+### 8. Batch Signal Analysis
 
 Analyze multiple signals at once:
 
@@ -339,6 +366,7 @@ The UI includes:
 - **Scorecards**: interactive sliders for thesis/market/risk factors with weighted scores and blockers
 - **Scenario & Sizing**: bull/base/bear expected value, risk-budget position sizing calculator
 - **Portfolio**: portfolio risk workstation with exposures, risk budget, candidate rankings, stress tests
+- **Rebalance**: trade plan generator with order blotter, guardrails, execution phases, before/after analysis
 - **Decision Memo**: generated memo summarizing all scorecards, readiness, and risk controls
 - **Example Gallery**: pre-loaded examples for different signal types and portfolio workflows
 
@@ -505,6 +533,8 @@ All formulas are documented in [docs/framework.md](docs/framework.md). All input
 | `examples/macro_context.json` | macro | Valid macro context |
 | `examples/invalid_action_signal.json` | signal (invalid) | Intentionally invalid action signal |
 | `examples/portfolio_workflow.json` | portfolio | Multi-asset portfolio with policy, candidates, and stress scenarios |
+| `examples/decision_journal.json` | journal | Multi-decision journal with lifecycle, calibration, and attribution |
+| `examples/rebalance_plan.json` | rebalance | Rebalance plan with targets, candidates, constraints, and cost assumptions |
 
 ## Validation Rules
 

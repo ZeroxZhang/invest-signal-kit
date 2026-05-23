@@ -79,6 +79,13 @@ def main(argv=None) -> int:
     p_cal.add_argument("--format", choices=["json", "markdown", "md"], default="json",
                        help="Output format (default: json)")
 
+    # --- rebalance ---
+    p_rebal = sub.add_parser("rebalance", help="Generate rebalance/trade plan from a rebalance JSON")
+    p_rebal.add_argument("file", help="Path to rebalance plan JSON file")
+    p_rebal.add_argument("--output", "-o", help="Output file path (default: stdout)")
+    p_rebal.add_argument("--format", choices=["json", "markdown", "md"], default="json",
+                         help="Output format (default: json)")
+
     # --- serve ---
     p_serve = sub.add_parser("serve", help="Serve the web UI locally")
     p_serve.add_argument("--port", type=int, default=8765, help="Port to listen on (default: 8765)")
@@ -107,6 +114,10 @@ def main(argv=None) -> int:
 
     if args.command == "calibrate":
         return _cmd_calibrate(args.file, getattr(args, "output", None),
+                              getattr(args, "format", "json"))
+
+    if args.command == "rebalance":
+        return _cmd_rebalance(args.file, getattr(args, "output", None),
                               getattr(args, "format", "json"))
 
     try:
@@ -564,6 +575,47 @@ def _cmd_calibrate(file_path: str, output: str | None, fmt: str) -> int:
         out = "\n".join(lines)
     else:
         out = json.dumps(_result_to_dict(calibration), indent=2, ensure_ascii=False)
+
+    if output:
+        Path(output).write_text(out, encoding="utf-8")
+        print(f"Written to {output}")
+    else:
+        print(out)
+    return 0
+
+
+def _cmd_rebalance(file_path: str, output: str | None, fmt: str) -> int:
+    """Generate rebalance/trade plan."""
+    from .rebalance import (
+        load_rebalance_plan,
+        generate_orders,
+        render_rebalance_markdown,
+        _result_to_dict,
+    )
+
+    try:
+        text = Path(file_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        print(f"Error: Invalid JSON: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        holdings, cash, policy, targets, candidates, costs = load_rebalance_plan(data)
+    except (ValueError, KeyError, TypeError) as exc:
+        print(f"Error loading rebalance plan: {exc}", file=sys.stderr)
+        return 1
+
+    result = generate_orders(holdings, cash, policy, targets, candidates, costs)
+
+    if fmt in ("markdown", "md"):
+        out = render_rebalance_markdown(result)
+    else:
+        out = json.dumps(_result_to_dict(result), indent=2, ensure_ascii=False)
 
     if output:
         Path(output).write_text(out, encoding="utf-8")

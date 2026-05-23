@@ -10,13 +10,14 @@
   <header>
     <div class="header-left">
       <h1>invest-signal-kit</h1>
-      <span class="version">v0.4.0</span>
+      <span class="version">v0.5.0</span>
     </div>
     <nav id="main-nav">
       <button class="nav-btn active" data-tab="signal-lab">Signal Lab</button>
       <button class="nav-btn" data-tab="scorecards">Scorecards</button>
       <button class="nav-btn" data-tab="scenario-sizing">Scenario &amp; Sizing</button>
       <button class="nav-btn" data-tab="portfolio">Portfolio</button>
+      <button class="nav-btn" data-tab="rebalance">Rebalance</button>
       <button class="nav-btn" data-tab="journal">Journal</button>
       <button class="nav-btn" data-tab="decision-memo">Decision Memo</button>
       <button class="nav-btn" data-tab="examples">Examples</button>
@@ -477,6 +478,137 @@
         <h2>Portfolio Blockers &amp; Warnings</h2>
         <div id="portfolio-blockers" class="blockers-list"></div>
         <div id="portfolio-warnings" class="notes-list"></div>
+      </div>
+    </section>
+
+    <!-- ===== Rebalance ===== -->
+    <section id="rebalance" class="tab-panel">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Rebalance / Trade Plan</h2>
+          <div class="btn-group">
+            <button id="btn-rebal-load" class="btn btn-sm">Load Example</button>
+            <button id="btn-rebal-analyze" class="btn btn-sm btn-primary">Generate Plan</button>
+            <button id="btn-rebal-copy" class="btn btn-sm">Copy JSON</button>
+          </div>
+        </div>
+        <textarea id="rebal-editor" spellcheck="false" placeholder="Paste rebalance plan JSON here (holdings, cash, policy, targets, candidates, costs)..."></textarea>
+      </div>
+
+      <!-- Before/After Summary -->
+      <div class="rebal-summary-grid">
+        <div class="panel" id="rebal-before-panel">
+          <h2>Current Portfolio</h2>
+          <div class="summary-metrics">
+            <div class="ev-metric"><span class="metric-label">Total Value</span><span class="metric-value" id="rb-before-total">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Cash</span><span class="metric-value" id="rb-before-cash">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Invested</span><span class="metric-value" id="rb-before-invested">--</span></div>
+          </div>
+        </div>
+        <div class="panel" id="rebal-after-panel">
+          <h2>Projected After Rebalance</h2>
+          <div class="summary-metrics">
+            <div class="ev-metric"><span class="metric-label">Total Value</span><span class="metric-value" id="rb-after-total">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Cash</span><span class="metric-value" id="rb-after-cash">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Invested</span><span class="metric-value" id="rb-after-invested">--</span></div>
+          </div>
+        </div>
+        <div class="panel" id="rebal-cost-panel">
+          <h2>Transaction Costs</h2>
+          <div class="summary-metrics">
+            <div class="ev-metric"><span class="metric-label">Commission</span><span class="metric-value" id="rb-commission">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Slippage</span><span class="metric-value" id="rb-slippage">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Total Cost</span><span class="metric-value" id="rb-total-cost">--</span></div>
+            <div class="ev-metric"><span class="metric-label">Turnover</span><span class="metric-value" id="rb-turnover">--</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Order Blotter -->
+      <div class="panel">
+        <h2>Proposed Orders</h2>
+        <div class="table-container">
+          <table class="data-table" id="rebal-orders-table">
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Shares</th>
+                <th>Value</th>
+                <th>Cost</th>
+                <th>Current %</th>
+                <th>Target %</th>
+                <th>Phase</th>
+              </tr>
+            </thead>
+            <tbody id="rebal-orders-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Order Rationale -->
+      <div class="panel">
+        <h2>Order Rationale</h2>
+        <div id="rebal-rationale" class="notes-list"></div>
+      </div>
+
+      <!-- Guardrails -->
+      <div class="panel">
+        <h2>Guardrails</h2>
+        <div class="table-container">
+          <table class="data-table" id="rebal-guardrails-table">
+            <thead>
+              <tr>
+                <th>Rule</th>
+                <th>Description</th>
+                <th>Current</th>
+                <th>Limit</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="rebal-guardrails-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Execution Plan -->
+      <div class="panel">
+        <h2>Execution Plan</h2>
+        <div id="rebal-execution"></div>
+      </div>
+
+      <!-- Blockers & Warnings -->
+      <div class="panel" id="rebal-issues-panel">
+        <h2>Blockers &amp; Warnings</h2>
+        <div id="rebal-blockers" class="blockers-list"></div>
+        <div id="rebal-warnings" class="notes-list"></div>
+      </div>
+
+      <!-- Before/After Positions -->
+      <div class="rebal-positions-grid">
+        <div class="panel">
+          <h2>Current Positions</h2>
+          <div class="table-container">
+            <table class="data-table" id="rebal-before-pos-table">
+              <thead>
+                <tr><th>Code</th><th>Name</th><th>Sector</th><th>Shares</th><th>Value</th><th>Weight %</th></tr>
+              </thead>
+              <tbody id="rebal-before-pos-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Projected Positions</h2>
+          <div class="table-container">
+            <table class="data-table" id="rebal-after-pos-table">
+              <thead>
+                <tr><th>Code</th><th>Name</th><th>Sector</th><th>Shares</th><th>Value</th><th>Weight %</th></tr>
+              </thead>
+              <tbody id="rebal-after-pos-tbody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </section>
 

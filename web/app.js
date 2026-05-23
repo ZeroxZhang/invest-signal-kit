@@ -668,6 +668,562 @@ function highlightJSON(json) {
 }
 
 // ---------------------------------------------------------------------------
+// Rebalance / Trade Plan Engine (mirrors invest_signal_kit/rebalance.py)
+// ---------------------------------------------------------------------------
+
+function rebalanceRoundLots(shares, lotSize) {
+  if (lotSize <= 0) return shares;
+  return Math.floor(shares / lotSize) * lotSize;
+}
+
+function rebalanceEstimateCost(orderValue, costs) {
+  const commission = Math.max(costs.commission_per_order || 0, costs.min_commission || 0);
+  const slippage = orderValue * ((costs.slippage_bps || 0) / 10000);
+  return { commission: round2(commission), slippage: round2(slippage), total: round2(commission + slippage) };
+}
+
+function rebalanceCheckCandidateGates(candidate, minScore) {
+  const blockers = [];
+  if ((candidate.signal_score || 0) < minScore)
+    blockers.push(`Signal score ${(candidate.signal_score || 0).toFixed(0)} below minimum ${minScore.toFixed(0)}`);
+  if (!['candidate', 'action'].includes(candidate.action_level || ''))
+    blockers.push(`Action level '${candidate.action_level || ''}' not yet candidate/action`);
+  if (candidate.ev_quality === 'negative_ev')
+    blockers.push('Expected value is negative');
+  if ((candidate.proposed_shares || 0) <= 0 && (candidate.proposed_value || 0) <= 0)
+    blockers.push('No proposed position size');
+  return blockers;
+}
+
+function rebalanceGenerateOrders(holdings, cash, policy, targets, candidates, costs) {
+  if (!costs) costs = { commission_per_order: 0, slippage_bps: 5, min_commission: 0 };
+
+  const posMap = {};
+  for (const h of holdings) { if (h.code) posMap[h.code] = h; }
+
+  const totalValue = holdings.reduce((s, h) => s + h.shares * h.current_price, 0) + cash;
+  const posWeights = {};
+  for (const h of holdings) { if (h.code) posWeights[h.code] = pct(h.shares * h.current_price, totalValue); }
+
+  const targetMap = {};
+  for (const t of targets) { if (t.code) targetMap[t.code] = t.target_pct; }
+
+  const orders = [];
+  const threshold = policy.rebalance_threshold_pct || 2;
+  const minOrder = policy.min_order_value || 500;
+  const lotSize = policy.lot_size || 1;
+  const maxOrderPct = policy.max_single_order_pct || 10;
+  const maxOrderVal = totalValue * (maxOrderPct / 100);
+
+  // Phase 1: existing holdings
+  for (const h of holdings) {
+    if (!h.code) continue;
+    const currentWt = posWeights[h.code] || 0;
+    const targetWt = targetMap[h.code];
+    const order = {
+      action: 'HOLD', code: h.code, name: h.name, sector: h.sector, asset_type: h.asset_type,
+      direction: h.direction, price: h.current_price, shares: 0, order_value: 0,
+      estimated_commission: 0, estimated_slippage: 0, estimated_total_cost: 0,
+      current_weight_pct: round2(currentWt), target_weight_pct: round2(currentWt),
+      new_weight_pct: round2(currentWt), drift_pct: 0, rationale: '', blockers: [], warnings: [],
+      phase: 'immediate', priority: 0,
+    };
+
+    if (targetWt === undefined) {
+      order.rationale = 'No target allocation specified; maintaining position.';
+      orders.push(order);
+      continue;
+    }
+
+    const drift = currentWt - targetWt;
+    order.target_weight_pct = round2(targetWt);
+    order.drift_pct = round2(drift);
+
+    if (Math.abs(drift) < threshold) {
+      order.rationale = `Current weight ${currentWt.toFixed(1)}% is within ${threshold.toFixed(1)}% of target ${targetWt.toFixed(1)}%. Drift ${drift >= 0 ? '+' : ''}${drift.toFixed(2)}% is below threshold.`;
+      orders.push(order);
+      continue;
+    }
+
+    if (drift > 0) {
+      // Overweight — trim or sell
+      let excessValue = (drift / 100) * totalValue;
+      let excessShares = h.current_price > 0 ? excessValue / h.current_price : 0;
+      excessShares = rebalanceRoundLots(excessShares, lotSize);
+
+      if (excessShares <= 0 || excessValue < minOrder) {
+        order.action = 'SKIP';
+        order.rationale = `Calculated trim of ${excessShares.toFixed(0)} shares ($${excessValue.toLocaleString()}) below minimum order $${minOrder.toLocaleString()}.`;
+        order.phase = 'blocked';
+        orders.push(order);
+        continue;
+      }
+
+      if (excessShares >= h.shares) {
+        order.action = 'SELL';
+        order.shares = -h.shares;
+        order.order_value = round2(h.shares * h.current_price);
+        order.rationale = `Selling entire position. Current ${currentWt.toFixed(1)}% drifts +${drift.toFixed(1)}% from target ${targetWt.toFixed(1)}%.`;
+      } else {
+        order.action = 'TRIM';
+        order.shares = -excessShares;
+        order.order_value = round2(excessShares * h.current_price);
+        order.rationale = `Trimming ${excessShares.toFixed(0)} shares to reduce weight from ${currentWt.toFixed(1)}% toward target ${targetWt.toFixed(1)}%.`;
+      }
+
+      const cost = rebalanceEstimateCost(order.order_value, costs);
+      order.estimated_commission = cost.commission;
+      order.estimated_slippage = cost.slippage;
+      order.estimated_total_cost = cost.total;
+      const newShares = h.shares + order.shares;
+      order.new_weight_pct = round2(pct(newShares * h.current_price, totalValue));
+      order.phase = 'immediate';
+      order.priority = 1;
+    } else {
+      // Underweight — add
+      let deficitValue = (-drift / 100) * totalValue;
+      let deficitShares = h.current_price > 0 ? deficitValue / h.current_price : 0;
+      deficitShares = rebalanceRoundLots(deficitShares, lotSize);
+
+      if (deficitShares <= 0 || deficitValue < minOrder) {
+        order.action = 'SKIP';
+        order.rationale = `Calculated add of ${deficitShares.toFixed(0)} shares ($${deficitValue.toLocaleString()}) below minimum order $${minOrder.toLocaleString()}.`;
+        order.phase = 'blocked';
+        orders.push(order);
+        continue;
+      }
+
+      if (deficitValue > maxOrderVal) {
+        deficitShares = rebalanceRoundLots(maxOrderVal / h.current_price, lotSize);
+        deficitValue = deficitShares * h.current_price;
+        order.warnings.push(`Order capped at $${maxOrderVal.toLocaleString()} (${maxOrderPct}% of portfolio).`);
+      }
+
+      order.action = 'ADD';
+      order.shares = deficitShares;
+      order.order_value = round2(deficitValue);
+      const cost = rebalanceEstimateCost(order.order_value, costs);
+      order.estimated_commission = cost.commission;
+      order.estimated_slippage = cost.slippage;
+      order.estimated_total_cost = cost.total;
+      const newShares = h.shares + deficitShares;
+      order.new_weight_pct = round2(pct(newShares * h.current_price, totalValue));
+      order.rationale = `Adding ${deficitShares.toFixed(0)} shares to increase weight from ${currentWt.toFixed(1)}% toward target ${targetWt.toFixed(1)}%.`;
+      order.phase = 'immediate';
+      order.priority = 2;
+    }
+    orders.push(order);
+  }
+
+  // Phase 2: candidate signals
+  const minScore = policy.watchlist_min_score || 60;
+  for (const c of (candidates || [])) {
+    const order = {
+      action: 'BUY', code: c.code, name: c.name, sector: c.sector, asset_type: c.asset_type,
+      direction: c.direction || 'bullish', price: c.current_price, shares: 0, order_value: 0,
+      estimated_commission: 0, estimated_slippage: 0, estimated_total_cost: 0,
+      current_weight_pct: 0, target_weight_pct: 0, new_weight_pct: 0, drift_pct: 0,
+      rationale: '', blockers: [], warnings: [], phase: 'immediate', priority: 0,
+    };
+
+    const gateBlockers = rebalanceCheckCandidateGates(c, minScore);
+    if (gateBlockers.length) {
+      order.action = 'SKIP';
+      order.blockers = gateBlockers;
+      order.rationale = `Candidate ${c.code} does not pass readiness gates: ${gateBlockers.join('; ')}`;
+      order.phase = 'blocked';
+      orders.push(order);
+      continue;
+    }
+
+    let buyShares = (c.proposed_shares || 0) > 0
+      ? rebalanceRoundLots(c.proposed_shares, lotSize)
+      : (c.proposed_value || 0) > 0 && c.current_price > 0
+        ? rebalanceRoundLots(c.proposed_value / c.current_price, lotSize)
+        : 0;
+
+    if (buyShares <= 0) {
+      order.action = 'SKIP';
+      order.rationale = 'No valid proposed position size.';
+      order.phase = 'blocked';
+      orders.push(order);
+      continue;
+    }
+
+    let buyValue = buyShares * c.current_price;
+    if (buyValue < minOrder) {
+      order.action = 'SKIP';
+      order.rationale = `Order value $${buyValue.toLocaleString()} below minimum $${minOrder.toLocaleString()}.`;
+      order.phase = 'blocked';
+      orders.push(order);
+      continue;
+    }
+
+    if (buyValue > maxOrderVal) {
+      buyShares = rebalanceRoundLots(maxOrderVal / c.current_price, lotSize);
+      buyValue = buyShares * c.current_price;
+      order.warnings.push(`Order capped at $${maxOrderVal.toLocaleString()} (${maxOrderPct}% of portfolio).`);
+    }
+
+    order.action = 'BUY';
+    order.shares = buyShares;
+    order.order_value = round2(buyValue);
+    const cost = rebalanceEstimateCost(order.order_value, costs);
+    order.estimated_commission = cost.commission;
+    order.estimated_slippage = cost.slippage;
+    order.estimated_total_cost = cost.total;
+    order.new_weight_pct = round2(pct(buyValue, totalValue));
+    order.target_weight_pct = targetMap[c.code] !== undefined ? round2(targetMap[c.code]) : order.new_weight_pct;
+    order.rationale = `Candidate signal passes gates (score=${(c.signal_score || 0).toFixed(0)}, level=${c.action_level}, ev=${c.ev_quality}). Buying ${buyShares.toFixed(0)} shares at $${c.current_price.toFixed(2)}.`;
+
+    if ((c.signal_score || 0) >= 70 && c.action_level === 'action') {
+      order.phase = 'immediate';
+      order.priority = 4;
+    } else {
+      order.phase = 'wait-for-trigger';
+      order.priority = 5;
+      order.warnings.push('Consider waiting for stronger signal confirmation.');
+    }
+    orders.push(order);
+  }
+
+  // Build result
+  return rebalanceBuildResult(orders, holdings, cash, policy, totalValue, costs);
+}
+
+function rebalanceBuildResult(orders, holdings, cash, policy, totalValue, costs) {
+  const result = {
+    before_total_value: round2(totalValue), before_cash: round2(cash),
+    before_invested: round2(totalValue - cash),
+    before_positions: [], before_sectors: [],
+    after_total_value: 0, after_cash: 0, after_invested: 0,
+    after_positions: [], after_sectors: [],
+    orders, buy_count: 0, sell_count: 0, trim_count: 0, add_count: 0, hold_count: 0, skip_count: 0,
+    total_commission: 0, total_slippage: 0, total_cost: 0, turnover_value: 0, turnover_pct: 0,
+    guardrails: [], guardrail_breaches: 0, execution_phases: [], blockers: [], warnings: [],
+  };
+
+  // Before positions
+  const sectorVals = {};
+  for (const h of holdings) {
+    if (!h.code) continue;
+    const mv = h.shares * h.current_price;
+    result.before_positions.push({
+      code: h.code, name: h.name, sector: h.sector, shares: h.shares,
+      market_value: round2(mv), weight_pct: round2(pct(mv, totalValue)),
+    });
+    const s = h.sector || 'Unknown';
+    sectorVals[s] = (sectorVals[s] || 0) + mv;
+  }
+  for (const [s, v] of Object.entries(sectorVals).sort()) {
+    result.before_sectors.push({ sector: s, market_value: round2(v), weight_pct: round2(pct(v, totalValue)) });
+  }
+
+  // Count actions
+  for (const o of orders) {
+    if (o.action === 'BUY') result.buy_count++;
+    else if (o.action === 'SELL') result.sell_count++;
+    else if (o.action === 'TRIM') result.trim_count++;
+    else if (o.action === 'ADD') result.add_count++;
+    else if (o.action === 'HOLD') result.hold_count++;
+    else if (o.action === 'SKIP') result.skip_count++;
+  }
+
+  // Costs
+  for (const o of orders) {
+    if (o.phase !== 'blocked' && o.action !== 'HOLD' && o.action !== 'SKIP') {
+      result.total_commission += o.estimated_commission;
+      result.total_slippage += o.estimated_slippage;
+      result.total_cost += o.estimated_total_cost;
+      result.turnover_value += o.order_value;
+    }
+  }
+  result.total_commission = round2(result.total_commission);
+  result.total_slippage = round2(result.total_slippage);
+  result.total_cost = round2(result.total_cost);
+  result.turnover_value = round2(result.turnover_value);
+  result.turnover_pct = round2(pct(result.turnover_value, totalValue));
+
+  // After state
+  const afterPos = {};
+  for (const h of holdings) {
+    if (h.code) afterPos[h.code] = { code: h.code, name: h.name, sector: h.sector, shares: h.shares, price: h.current_price };
+  }
+  let afterCash = cash;
+  for (const o of orders) {
+    if (o.phase === 'blocked' || o.action === 'HOLD' || o.action === 'SKIP') continue;
+    if (afterPos[o.code]) afterPos[o.code].shares += o.shares;
+    if (o.action === 'BUY' || o.action === 'ADD') afterCash -= o.order_value + o.estimated_total_cost;
+    else if (o.action === 'SELL' || o.action === 'TRIM') afterCash += o.order_value - o.estimated_total_cost;
+  }
+
+  const afterInvested = Object.values(afterPos).reduce((s, p) => s + p.shares * p.price, 0);
+  const afterTotal = afterInvested + afterCash;
+  result.after_total_value = round2(afterTotal);
+  result.after_cash = round2(afterCash);
+  result.after_invested = round2(afterInvested);
+
+  const afterSectorVals = {};
+  for (const p of Object.values(afterPos)) {
+    const mv = p.shares * p.price;
+    result.after_positions.push({
+      code: p.code, name: p.name, sector: p.sector, shares: round2(p.shares),
+      market_value: round2(mv), weight_pct: round2(pct(mv, afterTotal)),
+    });
+    const s = p.sector || 'Unknown';
+    afterSectorVals[s] = (afterSectorVals[s] || 0) + mv;
+  }
+  for (const [s, v] of Object.entries(afterSectorVals).sort()) {
+    result.after_sectors.push({ sector: s, market_value: round2(v), weight_pct: round2(pct(v, afterTotal)) });
+  }
+
+  // Guardrails
+  const guardrails = [];
+  for (const p of result.after_positions) {
+    guardrails.push({
+      rule: 'max_position', description: `Position ${p.code} weight after rebalance`,
+      current_value: p.weight_pct, limit_value: policy.max_position_pct,
+      passes: p.weight_pct <= policy.max_position_pct,
+      severity: p.weight_pct <= policy.max_position_pct ? 'warning' : 'error',
+    });
+  }
+  for (const s of result.after_sectors) {
+    const limit = (policy.sector_limits && policy.sector_limits[s.sector]) || policy.max_sector_pct;
+    guardrails.push({
+      rule: 'max_sector', description: `Sector '${s.sector}' weight after rebalance`,
+      current_value: s.weight_pct, limit_value: limit,
+      passes: s.weight_pct <= limit,
+      severity: s.weight_pct <= limit ? 'warning' : 'error',
+    });
+  }
+  const cashPct = round2(pct(afterCash, afterTotal));
+  guardrails.push({
+    rule: 'min_cash_reserve', description: 'Cash reserve after rebalance',
+    current_value: cashPct, limit_value: policy.min_cash_reserve_pct,
+    passes: cashPct >= policy.min_cash_reserve_pct,
+    severity: cashPct >= policy.min_cash_reserve_pct ? 'warning' : 'error',
+  });
+  guardrails.push({
+    rule: 'max_turnover', description: 'Total turnover as % of portfolio',
+    current_value: result.turnover_pct, limit_value: policy.max_turnover_pct,
+    passes: result.turnover_pct <= policy.max_turnover_pct,
+    severity: result.turnover_pct <= policy.max_turnover_pct ? 'warning' : 'error',
+  });
+  result.guardrails = guardrails;
+  result.guardrail_breaches = guardrails.filter(g => !g.passes).length;
+
+  // Execution phases
+  const phaseDescs = {
+    immediate: 'Orders that can execute now without constraint violations.',
+    'wait-for-trigger': 'Orders pending a trigger condition (price, cash, or signal).',
+    'reduce-risk-first': 'Orders that require reducing existing risk before execution.',
+    blocked: 'Orders blocked by guardrail or readiness constraints.',
+  };
+  const phaseMap = {};
+  for (const o of orders) { (phaseMap[o.phase] = phaseMap[o.phase] || []).push(o); }
+  for (const pn of ['immediate', 'wait-for-trigger', 'reduce-risk-first', 'blocked']) {
+    const po = phaseMap[pn];
+    if (!po || !po.length) continue;
+    po.sort((a, b) => a.priority - b.priority);
+    result.execution_phases.push({
+      phase: pn, description: phaseDescs[pn] || '',
+      orders: po, total_value: round2(po.reduce((s, o) => s + o.order_value, 0)),
+    });
+  }
+
+  // Aggregate blockers/warnings
+  for (const o of orders) {
+    for (const b of o.blockers) result.blockers.push(`${o.code}: ${b}`);
+    for (const w of o.warnings) result.warnings.push(`${o.code}: ${w}`);
+  }
+
+  return result;
+}
+
+function rebalanceAnalyze(data) {
+  const holdings = (data.holdings || []).map(h => ({
+    code: h.code || '', name: h.name || '', asset_type: h.asset_type || 'stock',
+    sector: h.sector || '', shares: +(h.shares || 0), entry_price: +(h.entry_price || 0),
+    current_price: +(h.current_price || 0), stop_price: +(h.stop_price || 0), direction: h.direction || 'long',
+  }));
+  const cash = +(data.cash || 0);
+  const p = data.policy || {};
+  const policy = {
+    max_position_pct: +(p.max_position_pct || 20), max_sector_pct: +(p.max_sector_pct || 35),
+    max_risk_budget_pct: +(p.max_risk_budget_pct || 6), min_cash_reserve_pct: +(p.min_cash_reserve_pct || 5),
+    max_turnover_pct: +(p.max_turnover_pct || 50), max_single_order_pct: +(p.max_single_order_pct || 10),
+    min_order_value: +(p.min_order_value || 500), lot_size: +(p.lot_size || 1),
+    rebalance_threshold_pct: +(p.rebalance_threshold_pct || 2), watchlist_min_score: +(p.watchlist_min_score || 60),
+    sector_limits: p.sector_limits || {},
+  };
+  const targets = (data.targets || []).map(t => ({ code: t.code || '', sector: t.sector || '', target_pct: +(t.target_pct || 0) }));
+  const candidates = (data.candidates || []).map(c => ({
+    code: c.code || '', name: c.name || '', direction: c.direction || 'bullish',
+    asset_type: c.asset_type || 'stock', sector: c.sector || '',
+    current_price: +(c.current_price || 0), stop_price: +(c.stop_price || 0),
+    signal_score: +(c.signal_score || 0), action_level: c.action_level || 'information',
+    thesis_quality: +(c.thesis_quality || 0), market_confirmation: +(c.market_confirmation || 0),
+    risk_execution: +(c.risk_execution || 0), ev_quality: c.ev_quality || 'negative_ev',
+    proposed_shares: +(c.proposed_shares || 0), proposed_value: +(c.proposed_value || 0),
+  }));
+  const costs = data.costs ? {
+    commission_per_order: +(data.costs.commission_per_order || 0),
+    slippage_bps: +(data.costs.slippage_bps || 5),
+    min_commission: +(data.costs.min_commission || 0),
+  } : { commission_per_order: 0, slippage_bps: 5, min_commission: 0 };
+
+  return rebalanceGenerateOrders(holdings, cash, policy, targets, candidates, costs);
+}
+
+// Rebalance Example Data
+const REBALANCE_EXAMPLE = {
+  holdings: [
+    { code: 'NVDA', name: 'NVIDIA Corp', asset_type: 'stock', sector: 'Technology', shares: 150, entry_price: 450, current_price: 820, stop_price: 720, direction: 'long' },
+    { code: 'AAPL', name: 'Apple Inc', asset_type: 'stock', sector: 'Technology', shares: 200, entry_price: 170, current_price: 195, stop_price: 175, direction: 'long' },
+    { code: 'JPM', name: 'JPMorgan Chase', asset_type: 'stock', sector: 'Financials', shares: 100, entry_price: 180, current_price: 210, stop_price: 190, direction: 'long' },
+    { code: 'UNH', name: 'UnitedHealth Group', asset_type: 'stock', sector: 'Healthcare', shares: 50, entry_price: 520, current_price: 540, stop_price: 490, direction: 'long' },
+    { code: 'AMZN', name: 'Amazon.com', asset_type: 'stock', sector: 'Consumer', shares: 80, entry_price: 150, current_price: 185, stop_price: 160, direction: 'long' },
+  ],
+  cash: 75000,
+  policy: {
+    max_position_pct: 25, max_sector_pct: 40, max_risk_budget_pct: 8,
+    min_cash_reserve_pct: 10, max_turnover_pct: 60, max_single_order_pct: 12,
+    min_order_value: 1000, lot_size: 1, rebalance_threshold_pct: 3, watchlist_min_score: 60,
+    sector_limits: { Technology: 35 },
+  },
+  targets: [
+    { code: 'NVDA', target_pct: 18 }, { code: 'AAPL', target_pct: 15 },
+    { code: 'JPM', target_pct: 12 }, { code: 'UNH', target_pct: 15 },
+    { code: 'AMZN', target_pct: 12 },
+  ],
+  candidates: [
+    { code: 'LLY', name: 'Eli Lilly & Co', direction: 'bullish', asset_type: 'stock', sector: 'Healthcare', current_price: 780, stop_price: 700, signal_score: 78, action_level: 'action', thesis_quality: 72, market_confirmation: 68, risk_execution: 65, ev_quality: 'positive_ev', proposed_shares: 20 },
+    { code: 'COIN', name: 'Coinbase Global', direction: 'bullish', asset_type: 'stock', sector: 'Financials', current_price: 220, stop_price: 180, signal_score: 42, action_level: 'watch', thesis_quality: 35, market_confirmation: 40, risk_execution: 30, ev_quality: 'negative_ev', proposed_shares: 50 },
+  ],
+  costs: { commission_per_order: 1, slippage_bps: 5, min_commission: 1 },
+};
+
+function renderRebalanceUI(result) {
+  const fmt = v => v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const fmtp = v => v.toFixed(1) + '%';
+
+  // Before summary
+  document.getElementById('rb-before-total').textContent = fmt(result.before_total_value);
+  document.getElementById('rb-before-cash').textContent = fmt(result.before_cash) + ' (' + fmtp(pct(result.before_cash, result.before_total_value)) + ')';
+  document.getElementById('rb-before-invested').textContent = fmt(result.before_invested) + ' (' + fmtp(pct(result.before_invested, result.before_total_value)) + ')';
+
+  // After summary
+  document.getElementById('rb-after-total').textContent = fmt(result.after_total_value);
+  document.getElementById('rb-after-cash').textContent = fmt(result.after_cash) + ' (' + fmtp(pct(result.after_cash, result.after_total_value)) + ')';
+  document.getElementById('rb-after-invested').textContent = fmt(result.after_invested) + ' (' + fmtp(pct(result.after_invested, result.after_total_value)) + ')';
+
+  // Costs
+  document.getElementById('rb-commission').textContent = fmt(result.total_commission);
+  document.getElementById('rb-slippage').textContent = fmt(result.total_slippage);
+  document.getElementById('rb-total-cost').textContent = fmt(result.total_cost);
+  document.getElementById('rb-turnover').textContent = fmt(result.turnover_value) + ' (' + fmtp(result.turnover_pct) + ')';
+
+  // Orders table
+  const ordersTbody = document.getElementById('rebal-orders-tbody');
+  const activeOrders = result.orders.filter(o => !['HOLD', 'SKIP'].includes(o.action));
+  const holdOrders = result.orders.filter(o => o.action === 'HOLD');
+  const skipOrders = result.orders.filter(o => o.action === 'SKIP');
+
+  ordersTbody.innerHTML = activeOrders.map(o => {
+    const actionCls = o.action === 'BUY' ? 'positive' : o.action === 'SELL' || o.action === 'TRIM' ? 'negative' : '';
+    return `<tr>
+      <td class="${actionCls}"><strong>${escHtml(o.action)}</strong></td>
+      <td>${escHtml(o.code)}</td><td>${escHtml(o.name)}</td>
+      <td>${o.shares >= 0 ? '+' : ''}${o.shares.toLocaleString()}</td>
+      <td>${fmt(o.order_value)}</td><td>${fmt(o.estimated_total_cost)}</td>
+      <td>${fmtp(o.current_weight_pct)}</td><td>${fmtp(o.target_weight_pct)}</td>
+      <td>${escHtml(o.phase)}</td>
+    </tr>`;
+  }).join('');
+
+  // Rationale
+  const rationaleDiv = document.getElementById('rebal-rationale');
+  let ratHtml = '';
+  for (const o of activeOrders) {
+    ratHtml += `<div class="note-item"><strong>${escHtml(o.action)} ${escHtml(o.code)}</strong> (${escHtml(o.name)}): ${escHtml(o.rationale)}`;
+    for (const b of o.blockers) ratHtml += `<br><span class="blocker-item">BLOCKER: ${escHtml(b)}</span>`;
+    for (const w of o.warnings) ratHtml += `<br><span style="color:var(--yellow)">WARNING: ${escHtml(w)}</span>`;
+    ratHtml += '</div>';
+  }
+  if (holdOrders.length) {
+    ratHtml += '<div class="note-item"><strong>Hold Positions:</strong><br>';
+    for (const o of holdOrders) ratHtml += `${escHtml(o.code)} (${escHtml(o.name)}): ${escHtml(o.rationale)}<br>`;
+    ratHtml += '</div>';
+  }
+  if (skipOrders.length) {
+    ratHtml += '<div class="note-item"><strong>Skipped Orders:</strong><br>';
+    for (const o of skipOrders) {
+      ratHtml += `${escHtml(o.code)} (${escHtml(o.name)}): ${escHtml(o.rationale)}`;
+      for (const b of o.blockers) ratHtml += `<br><span class="blocker-item">BLOCKER: ${escHtml(b)}</span>`;
+      ratHtml += '<br>';
+    }
+    ratHtml += '</div>';
+  }
+  rationaleDiv.innerHTML = ratHtml;
+
+  // Guardrails
+  const guardTbody = document.getElementById('rebal-guardrails-tbody');
+  guardTbody.innerHTML = result.guardrails.map(g => {
+    const statusCls = g.passes ? 'positive' : 'negative';
+    return `<tr>
+      <td>${escHtml(g.rule)}</td><td>${escHtml(g.description)}</td>
+      <td>${fmtp(g.current_value)}</td><td>${fmtp(g.limit_value)}</td>
+      <td class="${statusCls}">${g.passes ? 'PASS' : 'BREACH'}</td>
+    </tr>`;
+  }).join('');
+
+  // Execution plan
+  const execDiv = document.getElementById('rebal-execution');
+  execDiv.innerHTML = result.execution_phases.map(phase => {
+    const phaseTitle = phase.phase.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    let html = `<h3>${escHtml(phaseTitle)}</h3><p class="section-desc">${escHtml(phase.description)}</p>`;
+    if (phase.orders.length) {
+      html += '<div class="table-container"><table class="data-table"><thead><tr><th>Action</th><th>Code</th><th>Shares</th><th>Value</th><th>Phase</th></tr></thead><tbody>';
+      for (const o of phase.orders) {
+        html += `<tr><td>${escHtml(o.action)}</td><td>${escHtml(o.code)}</td><td>${o.shares >= 0 ? '+' : ''}${o.shares.toLocaleString()}</td><td>${fmt(o.order_value)}</td><td>${escHtml(o.phase)}</td></tr>`;
+      }
+      html += `</tbody></table></div><p style="margin-top:8px;color:var(--text-secondary)">Phase Total: ${fmt(phase.total_value)}</p>`;
+    }
+    return html;
+  }).join('');
+
+  // Blockers & Warnings
+  const blockersDiv = document.getElementById('rebal-blockers');
+  const warningsDiv = document.getElementById('rebal-warnings');
+  blockersDiv.innerHTML = result.blockers.length
+    ? result.blockers.map(b => `<div class="blocker-item">${escHtml(b)}</div>`).join('')
+    : '<div class="note-item" style="color:var(--green)">No blockers.</div>';
+  warningsDiv.innerHTML = result.warnings.length
+    ? result.warnings.map(w => `<div class="note-item">${escHtml(w)}</div>`).join('')
+    : '';
+
+  // Before/After positions
+  const beforeTbody = document.getElementById('rebal-before-pos-tbody');
+  beforeTbody.innerHTML = result.before_positions.map(p =>
+    `<tr><td>${escHtml(p.code)}</td><td>${escHtml(p.name)}</td><td>${escHtml(p.sector)}</td><td>${p.shares.toLocaleString()}</td><td>${fmt(p.market_value)}</td><td>${fmtp(p.weight_pct)}</td></tr>`
+  ).join('');
+
+  const afterTbody = document.getElementById('rebal-after-pos-tbody');
+  afterTbody.innerHTML = result.after_positions.map(p =>
+    `<tr><td>${escHtml(p.code)}</td><td>${escHtml(p.name)}</td><td>${escHtml(p.sector)}</td><td>${p.shares.toLocaleString()}</td><td>${fmt(p.market_value)}</td><td>${fmtp(p.weight_pct)}</td></tr>`
+  ).join('');
+}
+
+function runRebalanceAnalysis() {
+  const editor = document.getElementById('rebal-editor');
+  let data;
+  try { data = JSON.parse(editor.value); } catch (e) { alert('Invalid JSON: ' + e.message); return; }
+  const result = rebalanceAnalyze(data);
+  renderRebalanceUI(result);
+  window._lastRebalResult = result;
+}
+
+// ---------------------------------------------------------------------------
 // UI Wiring
 // ---------------------------------------------------------------------------
 
@@ -1063,6 +1619,17 @@ function populateExamples() {
         document.getElementById('journal').classList.add('active');
         document.getElementById('journal-editor').value = JSON.stringify(ex.data, null, 2);
         runJournalAnalysis();
+        return;
+      }
+
+      // Rebalance examples load into Rebalance tab
+      if (ex.type === 'rebalance') {
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        document.querySelector('[data-tab="rebalance"]').classList.add('active');
+        document.getElementById('rebalance').classList.add('active');
+        document.getElementById('rebal-editor').value = JSON.stringify(ex.data, null, 2);
+        runRebalanceAnalysis();
         return;
       }
 
@@ -1943,6 +2510,38 @@ document.addEventListener('DOMContentLoaded', () => {
       type: 'journal',
       description: 'Multi-decision journal with 10 decisions across active/exited/invalidated/reviewed/planned states. Demonstrates calibration buckets and attribution.',
       data: JOURNAL_EXAMPLE,
+    };
+    populateExamples();
+  }
+
+  // Wire rebalance tab
+  const btnRebalLoad = document.getElementById('btn-rebal-load');
+  const btnRebalAnalyze = document.getElementById('btn-rebal-analyze');
+  const btnRebalCopy = document.getElementById('btn-rebal-copy');
+
+  if (btnRebalLoad) {
+    btnRebalLoad.addEventListener('click', () => {
+      document.getElementById('rebal-editor').value = JSON.stringify(REBALANCE_EXAMPLE, null, 2);
+      runRebalanceAnalysis();
+    });
+  }
+  if (btnRebalAnalyze) {
+    btnRebalAnalyze.addEventListener('click', runRebalanceAnalysis);
+  }
+  if (btnRebalCopy) {
+    btnRebalCopy.addEventListener('click', () => {
+      if (window._lastRebalResult)
+        navigator.clipboard.writeText(JSON.stringify(window._lastRebalResult, null, 2)).catch(() => {});
+    });
+  }
+
+  // Add rebalance example to EXAMPLES gallery
+  if (typeof EXAMPLES !== 'undefined') {
+    EXAMPLES.rebalance_plan = {
+      name: 'Rebalance Trade Plan',
+      type: 'rebalance',
+      description: 'Portfolio rebalance with 5 holdings, target allocations, 2 candidate signals (one passing, one blocked), and cost assumptions. Demonstrates trim, add, buy, hold, and skip.',
+      data: REBALANCE_EXAMPLE,
     };
     populateExamples();
   }

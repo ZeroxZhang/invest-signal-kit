@@ -2391,5 +2391,416 @@ class TestJournalMarkdown(unittest.TestCase):
         self.assertIn("Score Calibration", md)
 
 
+# =========================================================================
+# Rebalance / Trade Plan tests
+# =========================================================================
+
+class TestRebalanceLoading(unittest.TestCase):
+    """Test rebalance data loaders."""
+
+    def test_load_rebalance_holding(self):
+        from invest_signal_kit.rebalance import load_rebalance_holding
+        h = load_rebalance_holding({
+            "code": "AAPL", "name": "Apple", "shares": 100,
+            "entry_price": 150, "current_price": 180, "stop_price": 160,
+        })
+        self.assertEqual(h.code, "AAPL")
+        self.assertEqual(h.shares, 100)
+        self.assertEqual(h.market_value, 18000)
+
+    def test_load_rebalance_policy(self):
+        from invest_signal_kit.rebalance import load_rebalance_policy
+        p = load_rebalance_policy({"max_position_pct": 25, "lot_size": 10})
+        self.assertEqual(p.max_position_pct, 25)
+        self.assertEqual(p.lot_size, 10)
+        self.assertEqual(p.min_order_value, 500)  # default
+
+    def test_load_target_allocation(self):
+        from invest_signal_kit.rebalance import load_target_allocation
+        t = load_target_allocation({"code": "AAPL", "target_pct": 15})
+        self.assertEqual(t.code, "AAPL")
+        self.assertEqual(t.target_pct, 15)
+
+    def test_load_candidate_trade(self):
+        from invest_signal_kit.rebalance import load_candidate_trade
+        c = load_candidate_trade({
+            "code": "LLY", "signal_score": 78, "action_level": "action",
+            "ev_quality": "positive_ev", "proposed_shares": 20,
+        })
+        self.assertEqual(c.code, "LLY")
+        self.assertEqual(c.signal_score, 78)
+
+    def test_load_cost_assumptions(self):
+        from invest_signal_kit.rebalance import load_cost_assumptions
+        c = load_cost_assumptions({"commission_per_order": 5, "slippage_bps": 10})
+        self.assertEqual(c.commission_per_order, 5)
+        self.assertEqual(c.slippage_bps, 10)
+
+    def test_load_rebalance_plan(self):
+        from invest_signal_kit.rebalance import load_rebalance_plan
+        data = {
+            "holdings": [{"code": "AAPL", "shares": 100, "current_price": 180}],
+            "cash": 50000,
+            "policy": {"max_position_pct": 25},
+            "targets": [{"code": "AAPL", "target_pct": 15}],
+            "candidates": [],
+            "costs": {},
+        }
+        holdings, cash, policy, targets, candidates, costs = load_rebalance_plan(data)
+        self.assertEqual(len(holdings), 1)
+        self.assertEqual(cash, 50000)
+        self.assertEqual(policy.max_position_pct, 25)
+        self.assertEqual(len(targets), 1)
+
+
+class TestRebalanceOrderGeneration(unittest.TestCase):
+    """Test order generation logic."""
+
+    def _make_holding(self, code, shares, price, sector="Tech"):
+        from invest_signal_kit.rebalance import RebalanceHolding
+        return RebalanceHolding(code=code, name=code, shares=shares,
+                                current_price=price, entry_price=price * 0.8,
+                                sector=sector)
+
+    def test_hold_within_threshold(self):
+        from invest_signal_kit.rebalance import generate_orders, RebalancePolicy, TargetAllocation
+        holdings = [self._make_holding("AAPL", 100, 180)]
+        cash = 2000
+        policy = RebalancePolicy(rebalance_threshold_pct=3)
+        targets = [TargetAllocation(code="AAPL", target_pct=90)]
+        # Current weight = 18000/20000 = 90%, target = 90% -> hold
+        result = generate_orders(holdings, cash, policy, targets)
+        hold_orders = [o for o in result.orders if o.action == "HOLD"]
+        self.assertEqual(len(hold_orders), 1)
+
+    def test_trim_overweight(self):
+        from invest_signal_kit.rebalance import generate_orders, RebalancePolicy, TargetAllocation
+        holdings = [self._make_holding("AAPL", 100, 100)]
+        cash = 0
+        policy = RebalancePolicy(rebalance_threshold_pct=1, min_order_value=100)
+        targets = [TargetAllocation(code="AAPL", target_pct=50)]
+        # Current weight = 100%, target = 50% -> trim
+        result = generate_orders(holdings, cash, policy, targets)
+        trim_orders = [o for o in result.orders if o.action in ("TRIM", "SELL")]
+        self.assertTrue(len(trim_orders) > 0)
+        self.assertTrue(trim_orders[0].shares < 0)
+
+    def test_add_underweight(self):
+        from invest_signal_kit.rebalance import generate_orders, RebalancePolicy, TargetAllocation
+        holdings = [self._make_holding("AAPL", 10, 100)]
+        cash = 9000
+        policy = RebalancePolicy(rebalance_threshold_pct=1, min_order_value=100)
+        targets = [TargetAllocation(code="AAPL", target_pct=50)]
+        # Current: 1000/10000 = 10%, target = 50% -> add
+        result = generate_orders(holdings, cash, policy, targets)
+        add_orders = [o for o in result.orders if o.action == "ADD"]
+        self.assertTrue(len(add_orders) > 0)
+        self.assertTrue(add_orders[0].shares > 0)
+
+    def test_buy_candidate_passing_gates(self):
+        from invest_signal_kit.rebalance import (
+            generate_orders, RebalancePolicy, TargetAllocation, CandidateTrade,
+        )
+        holdings = [self._make_holding("AAPL", 100, 100)]
+        cash = 50000
+        policy = RebalancePolicy(rebalance_threshold_pct=5)
+        targets = [TargetAllocation(code="AAPL", target_pct=20)]
+        candidates = [CandidateTrade(
+            code="LLY", name="Eli Lilly", current_price=780,
+            signal_score=78, action_level="action", ev_quality="positive_ev",
+            proposed_shares=10,
+        )]
+        result = generate_orders(holdings, cash, policy, targets, candidates)
+        buy_orders = [o for o in result.orders if o.action == "BUY"]
+        self.assertEqual(len(buy_orders), 1)
+        self.assertEqual(buy_orders[0].code, "LLY")
+
+    def test_skip_candidate_failing_gates(self):
+        from invest_signal_kit.rebalance import (
+            generate_orders, RebalancePolicy, TargetAllocation, CandidateTrade,
+        )
+        holdings = [self._make_holding("AAPL", 100, 100)]
+        cash = 50000
+        policy = RebalancePolicy(rebalance_threshold_pct=5)
+        targets = [TargetAllocation(code="AAPL", target_pct=20)]
+        candidates = [CandidateTrade(
+            code="COIN", name="Coinbase", current_price=220,
+            signal_score=42, action_level="watch", ev_quality="negative_ev",
+            proposed_shares=50,
+        )]
+        result = generate_orders(holdings, cash, policy, targets, candidates)
+        skip_orders = [o for o in result.orders if o.action == "SKIP"]
+        self.assertTrue(len(skip_orders) > 0)
+        self.assertEqual(skip_orders[0].code, "COIN")
+        self.assertTrue(len(skip_orders[0].blockers) > 0)
+
+
+class TestRebalanceConstraints(unittest.TestCase):
+    """Test constraint enforcement."""
+
+    def _make_holding(self, code, shares, price, sector="Tech"):
+        from invest_signal_kit.rebalance import RebalanceHolding
+        return RebalanceHolding(code=code, name=code, shares=shares,
+                                current_price=price, entry_price=price * 0.8,
+                                sector=sector)
+
+    def test_lot_size_rounding(self):
+        from invest_signal_kit.rebalance import generate_orders, RebalancePolicy, TargetAllocation
+        holdings = [self._make_holding("AAPL", 100, 100)]
+        cash = 9000
+        policy = RebalancePolicy(rebalance_threshold_pct=1, min_order_value=100, lot_size=10)
+        targets = [TargetAllocation(code="AAPL", target_pct=50)]
+        result = generate_orders(holdings, cash, policy, targets)
+        add_orders = [o for o in result.orders if o.action == "ADD"]
+        if add_orders:
+            self.assertEqual(add_orders[0].shares % 10, 0)
+
+    def test_min_order_value_skip(self):
+        from invest_signal_kit.rebalance import generate_orders, RebalancePolicy, TargetAllocation
+        holdings = [self._make_holding("AAPL", 100, 100)]
+        cash = 9000
+        # Very high min order to force skip
+        policy = RebalancePolicy(rebalance_threshold_pct=1, min_order_value=999999)
+        targets = [TargetAllocation(code="AAPL", target_pct=50)]
+        result = generate_orders(holdings, cash, policy, targets)
+        skip_orders = [o for o in result.orders if o.action == "SKIP"]
+        self.assertTrue(len(skip_orders) > 0)
+
+
+class TestRebalanceCosts(unittest.TestCase):
+    """Test cost and slippage estimation."""
+
+    def test_cost_estimation(self):
+        from invest_signal_kit.rebalance import _estimate_cost, CostAssumptions
+        costs = CostAssumptions(commission_per_order=5, slippage_bps=10, min_commission=1)
+        comm, slip, total = _estimate_cost(10000, costs)
+        self.assertEqual(comm, 5)
+        self.assertEqual(slip, 10.0)  # 10000 * 10/10000
+        self.assertEqual(total, 15.0)
+
+    def test_min_commission(self):
+        from invest_signal_kit.rebalance import _estimate_cost, CostAssumptions
+        costs = CostAssumptions(commission_per_order=0, min_commission=3, slippage_bps=0)
+        comm, slip, total = _estimate_cost(1000, costs)
+        self.assertEqual(comm, 3)
+
+
+class TestRebalanceExposure(unittest.TestCase):
+    """Test before/after exposure computation."""
+
+    def _make_holding(self, code, shares, price, sector="Tech"):
+        from invest_signal_kit.rebalance import RebalanceHolding
+        return RebalanceHolding(code=code, name=code, shares=shares,
+                                current_price=price, entry_price=price * 0.8,
+                                sector=sector)
+
+    def test_before_exposure(self):
+        from invest_signal_kit.rebalance import generate_orders, RebalancePolicy, TargetAllocation
+        holdings = [self._make_holding("AAPL", 100, 100)]
+        cash = 100
+        policy = RebalancePolicy(rebalance_threshold_pct=5)
+        targets = []
+        result = generate_orders(holdings, cash, policy, targets)
+        self.assertEqual(result.before_total_value, 10100)
+        self.assertEqual(result.before_cash, 100)
+
+    def test_after_exposure_trim(self):
+        from invest_signal_kit.rebalance import generate_orders, RebalancePolicy, TargetAllocation
+        holdings = [self._make_holding("AAPL", 100, 100)]
+        cash = 0
+        policy = RebalancePolicy(rebalance_threshold_pct=1, min_order_value=100)
+        targets = [TargetAllocation(code="AAPL", target_pct=50)]
+        result = generate_orders(holdings, cash, policy, targets)
+        # After trim, cash should increase
+        self.assertTrue(result.after_cash > 0)
+        # Total value should decrease slightly due to costs
+        self.assertTrue(result.after_total_value <= result.before_total_value)
+
+
+class TestRebalanceBlockedOrders(unittest.TestCase):
+    """Test blocked/downgraded orders."""
+
+    def _make_holding(self, code, shares, price, sector="Tech"):
+        from invest_signal_kit.rebalance import RebalanceHolding
+        return RebalanceHolding(code=code, name=code, shares=shares,
+                                current_price=price, entry_price=price * 0.8,
+                                sector=sector)
+
+    def test_candidate_low_score_blocked(self):
+        from invest_signal_kit.rebalance import (
+            generate_orders, RebalancePolicy, TargetAllocation, CandidateTrade,
+        )
+        holdings = [self._make_holding("AAPL", 100, 100)]
+        cash = 50000
+        policy = RebalancePolicy(rebalance_threshold_pct=5)
+        targets = []
+        candidates = [CandidateTrade(
+            code="XYZ", current_price=50, signal_score=30,
+            action_level="information", ev_quality="negative_ev",
+            proposed_shares=100,
+        )]
+        result = generate_orders(holdings, cash, policy, targets, candidates)
+        blocked = [o for o in result.orders if o.phase == "blocked"]
+        self.assertTrue(len(blocked) > 0)
+
+    def test_candidate_no_size_blocked(self):
+        from invest_signal_kit.rebalance import (
+            generate_orders, RebalancePolicy, TargetAllocation, CandidateTrade,
+        )
+        holdings = [self._make_holding("AAPL", 100, 100)]
+        cash = 50000
+        policy = RebalancePolicy(rebalance_threshold_pct=5)
+        targets = []
+        candidates = [CandidateTrade(
+            code="XYZ", current_price=50, signal_score=80,
+            action_level="action", ev_quality="positive_ev",
+            proposed_shares=0, proposed_value=0,
+        )]
+        result = generate_orders(holdings, cash, policy, targets, candidates)
+        blocked = [o for o in result.orders if o.phase == "blocked"]
+        self.assertTrue(len(blocked) > 0)
+
+
+class TestRebalanceCLI(unittest.TestCase):
+    """Test rebalance CLI command."""
+
+    def test_rebalance_json_output(self):
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "-m", "invest_signal_kit", "rebalance",
+             str(EXAMPLES / "rebalance_plan.json")],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0)
+        data = json.loads(result.stdout)
+        self.assertIn("orders", data)
+        self.assertIn("guardrails", data)
+        self.assertIn("execution_phases", data)
+
+    def test_rebalance_markdown_output(self):
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "-m", "invest_signal_kit", "rebalance",
+             str(EXAMPLES / "rebalance_plan.json"), "--format", "markdown"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Rebalance / Trade Plan", result.stdout)
+        self.assertIn("Proposed Orders", result.stdout)
+        self.assertIn("Guardrails", result.stdout)
+
+    def test_rebalance_missing_file(self):
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "-m", "invest_signal_kit", "rebalance",
+             "nonexistent.json"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Error", result.stderr)
+
+    def test_rebalance_invalid_json(self):
+        import subprocess
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write("not json")
+            f.flush()
+            result = subprocess.run(
+                [sys.executable, "-m", "invest_signal_kit", "rebalance", f.name],
+                capture_output=True, text=True,
+            )
+            os.unlink(f.name)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Error", result.stderr)
+
+
+class TestRebalanceExampleValidity(unittest.TestCase):
+    """Test that the rebalance example produces valid output."""
+
+    def test_example_loads_and_produces_orders(self):
+        from invest_signal_kit.rebalance import run_rebalance_analysis
+        with open(EXAMPLES / "rebalance_plan.json") as f:
+            data = json.load(f)
+        result = run_rebalance_analysis(data)
+        self.assertIn("orders", result)
+        self.assertTrue(len(result["orders"]) > 0)
+
+    def test_example_demonstrates_all_actions(self):
+        from invest_signal_kit.rebalance import run_rebalance_analysis
+        with open(EXAMPLES / "rebalance_plan.json") as f:
+            data = json.load(f)
+        result = run_rebalance_analysis(data)
+        actions = {o["action"] for o in result["orders"]}
+        self.assertIn("TRIM", actions)
+        self.assertIn("ADD", actions)
+        self.assertIn("BUY", actions)
+        self.assertIn("HOLD", actions)
+        self.assertIn("SKIP", actions)
+
+    def test_example_guardrails_pass(self):
+        from invest_signal_kit.rebalance import run_rebalance_analysis
+        with open(EXAMPLES / "rebalance_plan.json") as f:
+            data = json.load(f)
+        result = run_rebalance_analysis(data)
+        self.assertEqual(result["guardrail_breaches"], 0)
+
+
+class TestRebalanceMarkdown(unittest.TestCase):
+    """Test rebalance markdown rendering."""
+
+    def test_render_contains_sections(self):
+        from invest_signal_kit.rebalance import run_rebalance_analysis, render_rebalance_markdown
+        from invest_signal_kit.rebalance import load_rebalance_plan, generate_orders
+        with open(EXAMPLES / "rebalance_plan.json") as f:
+            data = json.load(f)
+        holdings, cash, policy, targets, candidates, costs = load_rebalance_plan(data)
+        result = generate_orders(holdings, cash, policy, targets, candidates, costs)
+        md = render_rebalance_markdown(result)
+        self.assertIn("# Rebalance / Trade Plan", md)
+        self.assertIn("Current Portfolio", md)
+        self.assertIn("Proposed Orders", md)
+        self.assertIn("Guardrails", md)
+        self.assertIn("Execution Plan", md)
+        self.assertIn("Not investment advice", md)
+
+
+class TestRebalanceGuardsAndWarnings(unittest.TestCase):
+    """Test guardrail checks produce correct results."""
+
+    def _make_holding(self, code, shares, price, sector="Tech"):
+        from invest_signal_kit.rebalance import RebalanceHolding
+        return RebalanceHolding(code=code, name=code, shares=shares,
+                                current_price=price, entry_price=price * 0.8,
+                                sector=sector)
+
+    def test_guardrails_include_position_check(self):
+        from invest_signal_kit.rebalance import generate_orders, RebalancePolicy, TargetAllocation
+        holdings = [self._make_holding("AAPL", 100, 100)]
+        cash = 100
+        policy = RebalancePolicy(rebalance_threshold_pct=5)
+        targets = []
+        result = generate_orders(holdings, cash, policy, targets)
+        pos_checks = [g for g in result.guardrails if g.rule == "max_position"]
+        self.assertTrue(len(pos_checks) > 0)
+
+    def test_guardrails_include_cash_check(self):
+        from invest_signal_kit.rebalance import generate_orders, RebalancePolicy, TargetAllocation
+        holdings = [self._make_holding("AAPL", 100, 100)]
+        cash = 100
+        policy = RebalancePolicy(rebalance_threshold_pct=5)
+        targets = []
+        result = generate_orders(holdings, cash, policy, targets)
+        cash_checks = [g for g in result.guardrails if g.rule == "min_cash_reserve"]
+        self.assertEqual(len(cash_checks), 1)
+
+    def test_execution_phases_populated(self):
+        from invest_signal_kit.rebalance import generate_orders, RebalancePolicy, TargetAllocation
+        holdings = [self._make_holding("AAPL", 100, 100)]
+        cash = 0
+        policy = RebalancePolicy(rebalance_threshold_pct=1, min_order_value=100)
+        targets = [TargetAllocation(code="AAPL", target_pct=50)]
+        result = generate_orders(holdings, cash, policy, targets)
+        self.assertTrue(len(result.execution_phases) > 0)
+
+
 if __name__ == "__main__":
     unittest.main()

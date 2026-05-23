@@ -146,8 +146,8 @@ invest-signal-kit portfolio examples/portfolio_workflow.json -o report.json
 # Analyze multiple signals
 invest-signal-kit batch examples/etf_signal.json examples/stock_shift_signal.json
 
-# Markdown summary
-invest-signal-kit batch examples/*.json --format markdown -o batch_report.md
+# Markdown summary (only use signal JSON files, not portfolio or macro files)
+invest-signal-kit batch examples/etf_signal.json examples/stock_shift_signal.json examples/professional_signal.json --format markdown -o batch_report.md
 ```
 
 ## Web UI

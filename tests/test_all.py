@@ -1049,7 +1049,7 @@ class TestNormalizeSignalJson(unittest.TestCase):
 
     def test_form_c_raw_signal(self):
         from invest_signal_kit.loader import normalize_signal_json
-        data = {"id": "z", "framework": {"thesis_quality": {}}}
+        data = {"id": "z", "action_level": "information", "framework": {"thesis_quality": {}}}
         sig, fw = normalize_signal_json(data)
         self.assertEqual(sig["id"], "z")
         self.assertIn("thesis_quality", fw)
@@ -1701,6 +1701,120 @@ class TestPortfolioWorkflowExample(unittest.TestCase):
             sys.stdout = old_stdout
         self.assertEqual(ret, 0)
         self.assertIn("Portfolio Risk Report", captured.getvalue())
+
+
+class TestBatchErrorHandling(unittest.TestCase):
+    """Regression tests for batch CLI error handling."""
+
+    def test_batch_missing_file_with_valid(self):
+        """Missing file is recorded as error; valid file still succeeds; exit 0."""
+        from invest_signal_kit.cli import main
+
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main([
+                "batch",
+                str(EXAMPLES / "etf_signal.json"),
+                "/tmp/does_not_exist_signal.json",
+            ])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        data = json.loads(captured.getvalue())
+        self.assertEqual(len(data["results"]), 1)
+        self.assertEqual(len(data["errors"]), 1)
+        self.assertIn("does_not_exist", data["errors"][0]["file"])
+
+    def test_batch_all_missing_exits_nonzero(self):
+        """All files missing -> zero results -> exit 1."""
+        from invest_signal_kit.cli import main
+
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["batch", "/tmp/no_such_file_a.json", "/tmp/no_such_file_b.json"])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 1)
+        data = json.loads(captured.getvalue())
+        self.assertEqual(len(data["results"]), 0)
+        self.assertEqual(len(data["errors"]), 2)
+
+    def test_batch_non_signal_file(self):
+        """Non-signal JSON (macro, portfolio) is recorded as error, not silently processed."""
+        from invest_signal_kit.cli import main
+
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main([
+                "batch",
+                str(EXAMPLES / "etf_signal.json"),
+                str(EXAMPLES / "macro_context.json"),
+                str(EXAMPLES / "portfolio_workflow.json"),
+            ])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        data = json.loads(captured.getvalue())
+        self.assertEqual(len(data["results"]), 1)
+        self.assertEqual(len(data["errors"]), 2)
+        for err in data["errors"]:
+            self.assertIn("Not a signal file", err["error"])
+
+    def test_batch_markdown_errors_section(self):
+        """Markdown output includes an Errors section when errors exist."""
+        from invest_signal_kit.cli import main
+
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main([
+                "batch",
+                str(EXAMPLES / "etf_signal.json"),
+                "/tmp/missing_file.json",
+                "--format", "markdown",
+            ])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        output = captured.getvalue()
+        self.assertIn("## Errors", output)
+        self.assertIn("missing_file.json", output)
+
+
+class TestCLIMissingFile(unittest.TestCase):
+    """Regression tests for missing-file handling in single-file commands."""
+
+    def test_validate_missing_file(self):
+        from invest_signal_kit.cli import main
+        ret = main(["validate", "/tmp/no_such_file_ever.json"])
+        self.assertEqual(ret, 1)
+
+    def test_score_missing_file(self):
+        from invest_signal_kit.cli import main
+        ret = main(["score", "/tmp/no_such_file_ever.json"])
+        self.assertEqual(ret, 1)
+
+    def test_framework_missing_file(self):
+        from invest_signal_kit.cli import main
+        ret = main(["framework", "/tmp/no_such_file_ever.json"])
+        self.assertEqual(ret, 1)
+
+    def test_memo_missing_file(self):
+        from invest_signal_kit.cli import main
+        ret = main(["memo", "/tmp/no_such_file_ever.json"])
+        self.assertEqual(ret, 1)
+
+    def test_portfolio_missing_file(self):
+        from invest_signal_kit.cli import main
+        ret = main(["portfolio", "/tmp/no_such_file_ever.json"])
+        self.assertEqual(ret, 1)
 
 
 if __name__ == "__main__":

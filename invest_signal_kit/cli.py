@@ -78,7 +78,7 @@ def main(argv=None) -> int:
 
     try:
         obj, kind = load_json_file(args.file)
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
@@ -147,14 +147,22 @@ def _cmd_framework(file_path: str, output: str | None) -> int:
     from .framework import run_full_analysis
     from .loader import normalize_signal_json
 
-    text = Path(file_path).read_text(encoding="utf-8")
+    try:
+        text = Path(file_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
         print(f"Error: Invalid JSON: {exc}", file=sys.stderr)
         return 1
 
-    signal_data, fw_data = normalize_signal_json(data)
+    try:
+        signal_data, fw_data = normalize_signal_json(data)
+    except (ValueError, KeyError, TypeError) as exc:
+        print(f"Error: Not a signal file: {exc}", file=sys.stderr)
+        return 1
     signal_data["framework"] = fw_data
 
     result = run_full_analysis(signal_data)
@@ -180,7 +188,11 @@ def _cmd_memo(file_path: str, output: str | None) -> int:
         generate_decision_memo,
     )
 
-    text = Path(file_path).read_text(encoding="utf-8")
+    try:
+        text = Path(file_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -190,7 +202,11 @@ def _cmd_memo(file_path: str, output: str | None) -> int:
     # Unwrap if needed
     from .loader import normalize_signal_json
 
-    signal_data, fw = normalize_signal_json(data)
+    try:
+        signal_data, fw = normalize_signal_json(data)
+    except (ValueError, KeyError, TypeError) as exc:
+        print(f"Error: Not a signal file: {exc}", file=sys.stderr)
+        return 1
 
     # Build memo input
     tq_raw = fw.get("thesis_quality", {})
@@ -232,7 +248,11 @@ def _cmd_portfolio(file_path: str, output: str | None, fmt: str) -> int:
     from .portfolio import load_portfolio_state, evaluate_portfolio, render_portfolio_markdown
     from .portfolio import _result_to_dict
 
-    text = Path(file_path).read_text(encoding="utf-8")
+    try:
+        text = Path(file_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -261,7 +281,11 @@ def _cmd_portfolio(file_path: str, output: str | None, fmt: str) -> int:
 
 
 def _cmd_batch(files: list, output: str | None, fmt: str) -> int:
-    """Run framework analysis on multiple signal files."""
+    """Run framework analysis on multiple signal files.
+
+    Exit code: 0 if at least one file produced a result (errors are listed
+    in the output).  1 only when zero files succeed.
+    """
     from .framework import run_full_analysis
     from .loader import normalize_signal_json
 
@@ -269,14 +293,24 @@ def _cmd_batch(files: list, output: str | None, fmt: str) -> int:
     errors = []
 
     for file_path in files:
-        text = Path(file_path).read_text(encoding="utf-8")
+        try:
+            text = Path(file_path).read_text(encoding="utf-8")
+        except OSError as exc:
+            errors.append({"file": file_path, "error": str(exc)})
+            continue
+
         try:
             data = json.loads(text)
         except json.JSONDecodeError as exc:
             errors.append({"file": file_path, "error": f"Invalid JSON: {exc}"})
             continue
 
-        signal_data, fw_data = normalize_signal_json(data)
+        try:
+            signal_data, fw_data = normalize_signal_json(data)
+        except (ValueError, KeyError, TypeError) as exc:
+            errors.append({"file": file_path, "error": f"Not a signal file: {exc}"})
+            continue
+
         signal_data["framework"] = fw_data
 
         analysis = run_full_analysis(signal_data)
@@ -319,7 +353,8 @@ def _cmd_batch(files: list, output: str | None, fmt: str) -> int:
         print(f"Written to {output}")
     else:
         print(out)
-    return 0
+
+    return 0 if results else 1
 
 
 def _cmd_serve(port: int, bind: str) -> int:

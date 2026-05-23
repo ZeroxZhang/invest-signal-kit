@@ -165,6 +165,10 @@ def normalize_signal_json(data: dict) -> tuple[dict, dict]:
       C) raw signal dict with optional "framework"
 
     When both top-level and nested framework exist, top-level wins.
+
+    Raises ValueError when the input does not look like a signal file
+    (layout C only -- dicts with an explicit "signal" key are accepted
+    even if the inner value is unusual).
     """
     if "signal" in data:
         signal_dict = data["signal"]
@@ -175,4 +179,17 @@ def normalize_signal_json(data: dict) -> tuple[dict, dict]:
     else:
         signal_dict = data
         fw_dict = data.get("framework", {})
+        # Reject dicts that are clearly not signals (e.g. portfolio,
+        # macro context).  Mirrors the heuristic in load_json_file.
+        if not isinstance(signal_dict, dict):
+            raise ValueError(
+                "Expected a JSON object for signal data, "
+                f"got {type(signal_dict).__name__}"
+            )
+        if "action_level" not in signal_dict and "evidence" not in signal_dict:
+            raise ValueError(
+                "JSON does not look like a signal file "
+                '(missing "signal" wrapper and no action_level/evidence key). '
+                "Wrap with {{\"signal\": ...}} or include action_level/evidence."
+            )
     return signal_dict, fw_dict

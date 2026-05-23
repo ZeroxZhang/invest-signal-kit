@@ -405,8 +405,7 @@ python3 -m invest_signal_kit build-scenario \
   --name "My Backtest" \
   --initial-capital 50000 \
   --commission 2 \
-  --slippage-bps 10 \
-  --asset-name AAPL
+  --slippage-bps 10
 
 # Save to file
 python3 -m invest_signal_kit build-scenario --prices examples/prices.csv --signals examples/signals.csv -o scenario.json
@@ -426,7 +425,7 @@ python3 -m invest_signal_kit build-scenario \
   --prices examples/prices.csv \
   --signals examples/signals.csv \
   --benchmark examples/benchmark.csv \
-  --name "AAPL Swing Trade" \
+  --name "Multi-Asset Swing Trade" \
   -o my_scenario.json
 
 # 2. Run backtest
@@ -438,7 +437,7 @@ python3 -m invest_signal_kit serve --port 8765
 
 **CSV formats:**
 
-- **Price CSV** — Required: `date`, `close`. Optional: `open`, `high`, `low`, `volume`
+- **Price CSV** — Required: `date`, `close`. Optional: `open`, `high`, `low`, `volume`, `asset` (for multi-asset CSVs; without it, `--asset-name` sets the single asset name, default `IMPORTED`)
 - **Signal CSV** — Required: `date`, `asset`, `action`. Optional: `quantity`, `price`, `reason`, `confidence`, `stop_price`, `target_price`, `time_stop_days`
 - **Holdings CSV** — Required: `code`, `shares`, `current_price`. Optional: `name`, `asset_type`, `sector`, `entry_price`, `stop_price`, `direction`
 - **Benchmark CSV** — Same as price CSV
@@ -637,7 +636,7 @@ All formulas are documented in [docs/framework.md](docs/framework.md). All input
 | `examples/decision_journal.json` | journal | Multi-decision journal with lifecycle, calibration, and attribution |
 | `examples/rebalance_plan.json` | rebalance | Rebalance plan with targets, candidates, constraints, and cost assumptions |
 | `examples/backtest_scenario.json` | backtest | Multi-asset backtest with signals, benchmark, costs, and risk rules |
-| `examples/prices.csv` | CSV | Price data for import (OHLCV format) |
+| `examples/prices.csv` | CSV | Multi-asset price data for import (OHLCV with asset column) |
 | `examples/signals.csv` | CSV | Signal events for import |
 | `examples/holdings.csv` | CSV | Portfolio holdings for import |
 | `examples/benchmark.csv` | CSV | Benchmark series for import |

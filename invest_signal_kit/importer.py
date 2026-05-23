@@ -163,7 +163,11 @@ def import_price_csv(text: str) -> ImportResult:
     """Import a price CSV and normalize to backtest-compatible format.
 
     Required columns: date, close
-    Optional columns: open, high, low, volume
+    Optional columns: open, high, low, volume, asset
+
+    When an 'asset' column is present, duplicate dates are allowed across
+    different assets (multi-asset price CSV). Without an 'asset' column,
+    duplicate dates within the file are flagged as errors.
 
     Returns ImportResult with data as list of price dicts, sorted by date.
     """
@@ -180,8 +184,10 @@ def import_price_csv(text: str) -> ImportResult:
 
     data = []
     seen_dates: Dict[str, int] = {}
+    seen_date_assets: Dict[Tuple[str, str], int] = {}
     warnings: List[ImportError] = []
     header_set = {h.lower() for h in headers}
+    has_asset_col = "asset" in header_set
 
     for i, row in enumerate(rows, start=2):
         date = row.get("date", "").strip()
@@ -189,12 +195,24 @@ def import_price_csv(text: str) -> ImportResult:
             errors.append(ImportError(row=i, column="date", message="Date is empty."))
             continue
 
-        if date in seen_dates:
-            errors.append(ImportError(
-                row=i, column="date",
-                message=f"Duplicate date '{date}' (first seen on row {seen_dates[date]})."))
-            continue
-        seen_dates[date] = i
+        asset = row.get("asset", "").strip() if has_asset_col else ""
+
+        if has_asset_col:
+            key = (date, asset)
+            if key in seen_date_assets:
+                errors.append(ImportError(
+                    row=i, column="date",
+                    message=f"Duplicate date '{date}' for asset '{asset}' "
+                            f"(first seen on row {seen_date_assets[key]})."))
+                continue
+            seen_date_assets[key] = i
+        else:
+            if date in seen_dates:
+                errors.append(ImportError(
+                    row=i, column="date",
+                    message=f"Duplicate date '{date}' (first seen on row {seen_dates[date]})."))
+                continue
+            seen_dates[date] = i
 
         close_val, err = _parse_float(row.get("close", ""), i, "close", required=True)
         if err:
@@ -202,6 +220,8 @@ def import_price_csv(text: str) -> ImportResult:
             continue
 
         entry: Dict[str, Any] = {"date": date, "close": close_val}
+        if has_asset_col and asset:
+            entry["asset"] = asset
 
         for col in ("open", "high", "low", "volume"):
             if col in header_set:
@@ -214,8 +234,8 @@ def import_price_csv(text: str) -> ImportResult:
         else:
             data.append(entry)
 
-    # Sort by date
-    data.sort(key=lambda d: d["date"])
+    # Sort by date (and asset for stable ordering in multi-asset)
+    data.sort(key=lambda d: (d["date"], d.get("asset", "")))
 
     if errors:
         return ImportResult(errors=errors, warnings=warnings, row_count=len(rows))
@@ -224,7 +244,11 @@ def import_price_csv(text: str) -> ImportResult:
 
 
 def import_price_json(text: str) -> ImportResult:
-    """Import a price series from JSON (list of price dicts)."""
+    """Import a price series from JSON (list of price dicts).
+
+    When entries contain an 'asset' field, duplicate dates are allowed
+    across different assets (multi-asset price data).
+    """
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -238,7 +262,10 @@ def import_price_json(text: str) -> ImportResult:
 
     result = []
     seen_dates: Dict[str, int] = {}
+    seen_date_assets: Dict[Tuple[str, str], int] = {}
     errors: List[ImportError] = []
+
+    has_asset_field = any(isinstance(e, dict) and "asset" in e for e in data if isinstance(e, dict))
 
     for i, entry in enumerate(data, start=1):
         if not isinstance(entry, dict):
@@ -248,12 +275,25 @@ def import_price_json(text: str) -> ImportResult:
         if not date:
             errors.append(ImportError(row=i, column="date", message="Date is missing."))
             continue
-        if date in seen_dates:
-            errors.append(ImportError(
-                row=i, column="date",
-                message=f"Duplicate date '{date}' (first seen at index {seen_dates[date]})."))
-            continue
-        seen_dates[date] = i
+
+        asset = str(entry.get("asset", "")) if has_asset_field else ""
+
+        if has_asset_field:
+            key = (date, asset)
+            if key in seen_date_assets:
+                errors.append(ImportError(
+                    row=i, column="date",
+                    message=f"Duplicate date '{date}' for asset '{asset}' "
+                            f"(first seen at index {seen_date_assets[key]})."))
+                continue
+            seen_date_assets[key] = i
+        else:
+            if date in seen_dates:
+                errors.append(ImportError(
+                    row=i, column="date",
+                    message=f"Duplicate date '{date}' (first seen at index {seen_dates[date]})."))
+                continue
+            seen_dates[date] = i
 
         close_val = entry.get("close")
         if close_val is None:
@@ -267,7 +307,9 @@ def import_price_json(text: str) -> ImportResult:
                                       message=f"Cannot parse '{close_val}' as number."))
             continue
 
-        out = {"date": date, "close": close_val}
+        out: Dict[str, Any] = {"date": date, "close": close_val}
+        if has_asset_field and asset:
+            out["asset"] = asset
         for col in ("open", "high", "low", "volume"):
             if col in entry:
                 try:
@@ -277,7 +319,7 @@ def import_price_json(text: str) -> ImportResult:
                                               message=f"Cannot parse '{entry[col]}' as number."))
         result.append(out)
 
-    result.sort(key=lambda d: d["date"])
+    result.sort(key=lambda d: (d["date"], d.get("asset", "")))
 
     if errors:
         return ImportResult(errors=errors, row_count=len(data))

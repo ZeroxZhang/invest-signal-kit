@@ -3351,8 +3351,9 @@ class TestPriceCsvImport(unittest.TestCase):
         text = (EXAMPLES / "prices.csv").read_text()
         result = import_price_csv(text)
         self.assertEqual(result.errors, [])
-        self.assertEqual(len(result.data), 10)
+        self.assertEqual(len(result.data), 30)
         self.assertEqual(result.data[0]["date"], "2026-01-02")
+        self.assertEqual(result.data[0]["asset"], "AAPL")
         self.assertEqual(result.data[0]["close"], 182.0)
 
     def test_sorted_by_date(self):
@@ -3390,6 +3391,20 @@ class TestPriceCsvImport(unittest.TestCase):
     def test_duplicate_date(self):
         from invest_signal_kit.importer import import_price_csv
         result = import_price_csv("date,close\n2026-01-02,100\n2026-01-02,200\n")
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("Duplicate date", result.errors[0].message)
+
+    def test_multi_asset_dates_allowed(self):
+        from invest_signal_kit.importer import import_price_csv
+        text = "date,asset,close\n2026-01-02,AAPL,100\n2026-01-02,MSFT,200\n"
+        result = import_price_csv(text)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.data), 2)
+
+    def test_multi_asset_same_date_asset_duplicate(self):
+        from invest_signal_kit.importer import import_price_csv
+        text = "date,asset,close\n2026-01-02,AAPL,100\n2026-01-02,AAPL,200\n"
+        result = import_price_csv(text)
         self.assertEqual(len(result.errors), 1)
         self.assertIn("Duplicate date", result.errors[0].message)
 
@@ -3651,8 +3666,9 @@ class TestScenarioBuilderFromCsv(unittest.TestCase):
         config = ScenarioConfig(name="E2E Test", initial_capital=100000)
         result = build_scenario(prices=prices, signals=signals, benchmark=benchmark, config=config)
         self.assertEqual(result.errors, [])
+        self.assertEqual(result.warnings, [])
         self.assertIsNotNone(result.scenario)
-        self.assertEqual(result.asset_count, 1)
+        self.assertEqual(result.asset_count, 3)
         self.assertEqual(result.event_count, 5)
         self.assertTrue(result.has_benchmark)
 
@@ -3665,12 +3681,17 @@ class TestScenarioBuilderFromCsv(unittest.TestCase):
 
         prices = import_price_csv((EXAMPLES / "prices.csv").read_text()).data
         signals = import_signal_csv((EXAMPLES / "signals.csv").read_text()).data
-        result = build_scenario(prices=prices, signals=signals, price_asset_name="AAPL")
+        result = build_scenario(prices=prices, signals=signals)
         self.assertEqual(result.errors, [])
+        self.assertEqual(result.warnings, [])
 
         scenario = load_backtest_scenario(result.scenario)
         bt_result = run_backtest(scenario)
         self.assertGreater(bt_result.total_trades, 0)
+
+        # TSLA enter has confidence 35, below min_confidence 60 -> blocked
+        blocked_actions = [e for e in bt_result.blocked_events if e.action == "enter"]
+        self.assertTrue(any("confidence" in (e.block_reason or "").lower() for e in blocked_actions))
 
 
 class TestImportMarkdownRender(unittest.TestCase):
@@ -3722,7 +3743,7 @@ class TestImportAutoDetect(unittest.TestCase):
         from invest_signal_kit.importer import import_prices
         result = import_prices(str(EXAMPLES / "prices.csv"))
         self.assertEqual(result.errors, [])
-        self.assertEqual(len(result.data), 10)
+        self.assertEqual(len(result.data), 30)
 
     def test_json_by_extension(self):
         from invest_signal_kit.importer import import_signals
@@ -3835,6 +3856,20 @@ class TestBuildScenarioCLI(unittest.TestCase):
             f.flush()
             ret = main(["build-scenario", "--prices", f.name, "--name", "My Test", "--initial-capital", "50000"])
             self.assertEqual(ret, 0)
+
+    def test_build_example_files_no_warnings(self):
+        """Example CSVs should build cleanly with no warnings."""
+        from invest_signal_kit.importer import import_price_csv, import_signal_csv
+        from invest_signal_kit.scenario_builder import build_scenario, ScenarioConfig
+        prices = import_price_csv((EXAMPLES / "prices.csv").read_text()).data
+        signals = import_signal_csv((EXAMPLES / "signals.csv").read_text()).data
+        benchmark = import_price_csv((EXAMPLES / "benchmark.csv").read_text()).data
+        config = ScenarioConfig(name="Example Test")
+        result = build_scenario(prices=prices, signals=signals, benchmark=benchmark, config=config)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(result.warnings, [])
+        self.assertEqual(result.asset_count, 3)
+        self.assertEqual(result.event_count, 5)
 
 
 if __name__ == "__main__":

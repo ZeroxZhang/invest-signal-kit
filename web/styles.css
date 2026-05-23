@@ -682,7 +682,7 @@ footer p {
 
 /* --- Responsive --- */
 @media (max-width: 900px) {
-  .panel-grid, .scorecards-grid {
+  .panel-grid, .scorecards-grid, .portfolio-grid {
     grid-template-columns: 1fr;
   }
   header {
@@ -699,4 +699,171 @@ footer p {
     height: auto;
     min-height: calc(100vh - 80px - 32px);
   }
+}
+
+/* --- Portfolio --- */
+.portfolio-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+#portfolio-editor {
+  width: 100%;
+  height: 160px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 12px;
+  resize: vertical;
+  tab-size: 2;
+}
+
+#portfolio-editor:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+
+.summary-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.risk-budget-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.risk-budget-bar {
+  flex: 1;
+  height: 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.risk-budget-fill {
+  height: 100%;
+  border-radius: 5px;
+  background: var(--green);
+  transition: width 0.3s, background 0.3s;
+  width: 0%;
+}
+
+.risk-budget-fill.warning {
+  background: var(--yellow);
+}
+
+.risk-budget-fill.danger {
+  background: var(--red);
+}
+
+.risk-budget-label {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 50px;
+  text-align: right;
+}
+
+/* --- Data Tables --- */
+.table-container {
+  overflow-x: auto;
+  margin-top: 8px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.data-table th {
+  text-align: left;
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.data-table tr:hover td {
+  background: var(--bg-secondary);
+}
+
+.data-table .positive { color: var(--green); }
+.data-table .negative { color: var(--red); }
+.data-table .warning-text { color: var(--yellow); }
+.data-table .pass { color: var(--green); font-weight: 600; }
+.data-table .fail { color: var(--red); font-weight: 600; }
+
+/* --- Stress Test --- */
+.stress-scenario {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.stress-scenario h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.stress-scenario .stress-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.stress-scenario .stress-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.stress-scenario .stress-metric {
+  padding: 6px 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.stress-scenario .stress-metric .metric-label {
+  font-size: 9px;
+}
+
+.stress-scenario .stress-metric .metric-value {
+  font-size: 14px;
+}
+
+.stress-scenario.breach {
+  border-color: var(--red-dim);
 }

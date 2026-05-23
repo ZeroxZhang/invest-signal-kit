@@ -1,6 +1,6 @@
 # invest-signal-kit
 
-A stdlib-only Python toolkit for structured, auditable investment signal analysis. Includes a professional finance framework with scorecards, scenario modeling, position sizing, and a browser-based workstation UI.
+A stdlib-only Python toolkit for structured, auditable investment signal analysis. Includes a professional finance framework with scorecards, scenario modeling, position sizing, portfolio risk management, and a browser-based workstation UI.
 
 It does not pick stocks, automate trades, or promise returns. Its job is narrower: validate whether a research note has enough evidence, data-quality labeling, trigger conditions, invalidation conditions, and risk discipline before it is promoted from information to watch, candidate, or action.
 
@@ -100,6 +100,8 @@ invest-signal-kit serve --port 8765
 | `render` | Turn a signal/macro JSON into a Markdown report | `python3 -m invest_signal_kit render examples/etf_signal.json -o out.md` |
 | `framework` | Run the professional scorecards, EV model, sizing model, and decision ladder | `python3 -m invest_signal_kit framework examples/professional_signal.json` |
 | `memo` | Generate a Markdown decision memo from signal + framework inputs | `python3 -m invest_signal_kit memo examples/professional_signal.json -o memo.md` |
+| `portfolio` | Run portfolio risk analysis (exposures, limits, stress tests, candidates) | `python3 -m invest_signal_kit portfolio examples/portfolio_workflow.json` |
+| `batch` | Run framework analysis on multiple signal files at once | `python3 -m invest_signal_kit batch examples/etf_signal.json examples/stock_shift_signal.json` |
 | `serve` | Launch the local browser workstation | `python3 -m invest_signal_kit serve --port 8765` |
 
 ## Practical Workflow
@@ -276,6 +278,38 @@ python3 -m invest_signal_kit serve --port 8765
 
 If you only have a raw news item, start it as `information`. Promote it only after evidence, trigger, invalidation, and risk controls are explicit.
 
+### 6. Portfolio Risk Management
+
+For portfolio-level analysis, create a portfolio JSON with holdings, policy, candidates, and stress scenarios:
+
+```bash
+# Run portfolio analysis (JSON output)
+python3 -m invest_signal_kit portfolio examples/portfolio_workflow.json
+
+# Markdown report
+python3 -m invest_signal_kit portfolio examples/portfolio_workflow.json --format markdown
+
+# Save to file
+python3 -m invest_signal_kit portfolio examples/portfolio_workflow.json -o portfolio_report.md
+```
+
+The portfolio engine checks:
+- Position and sector exposures against concentration limits
+- Risk budget utilization
+- Candidate signals against watchlist criteria
+- Stress scenarios (market crash, sector shock, single-name shock, liquidity crisis)
+
+Or use the **Portfolio** tab in the web UI to load, edit, and analyze portfolio data interactively.
+
+### 7. Batch Signal Analysis
+
+Analyze multiple signals at once:
+
+```bash
+# Compare signals side-by-side
+python3 -m invest_signal_kit batch examples/etf_signal.json examples/stock_shift_signal.json --format markdown
+```
+
 ### Web UI
 
 Open `web/index.html` in a browser, or serve locally:
@@ -288,8 +322,9 @@ The UI includes:
 - **Signal Lab**: paste/edit JSON, validate, score, render Markdown, run full analysis
 - **Scorecards**: interactive sliders for thesis/market/risk factors with weighted scores and blockers
 - **Scenario & Sizing**: bull/base/bear expected value, risk-budget position sizing calculator
+- **Portfolio**: portfolio risk workstation with exposures, risk budget, candidate rankings, stress tests
 - **Decision Memo**: generated memo summarizing all scorecards, readiness, and risk controls
-- **Example Gallery**: pre-loaded examples for different signal types
+- **Example Gallery**: pre-loaded examples for different signal types and portfolio workflows
 
 See [docs/ui.md](docs/ui.md) for detailed UI documentation.
 
@@ -453,6 +488,7 @@ All formulas are documented in [docs/framework.md](docs/framework.md). All input
 | `examples/professional_signal.json` | signal + framework | Full professional analysis with scorecards, scenario, sizing |
 | `examples/macro_context.json` | macro | Valid macro context |
 | `examples/invalid_action_signal.json` | signal (invalid) | Intentionally invalid action signal |
+| `examples/portfolio_workflow.json` | portfolio | Multi-asset portfolio with policy, candidates, and stress scenarios |
 
 ## Validation Rules
 
@@ -487,6 +523,8 @@ python3 -m invest_signal_kit score examples/etf_signal.json
 python3 -m invest_signal_kit framework examples/professional_signal.json
 python3 -m invest_signal_kit memo examples/professional_signal.json
 python3 -m invest_signal_kit render examples/etf_signal.json --output /tmp/render.md
+python3 -m invest_signal_kit portfolio examples/portfolio_workflow.json
+python3 -m invest_signal_kit batch examples/etf_signal.json examples/stock_shift_signal.json
 ```
 
 ## Disclaimer

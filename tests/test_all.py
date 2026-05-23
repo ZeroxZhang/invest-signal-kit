@@ -1141,5 +1141,567 @@ class TestProfessionalSignalRegression(unittest.TestCase):
         self.assertIn("Thesis Quality", memo)
 
 
+# =========================================================================
+# Portfolio Risk Engine Tests
+# =========================================================================
+
+class TestHoldingProperties(unittest.TestCase):
+    """Test Holding computed properties."""
+
+    def test_market_value(self):
+        from invest_signal_kit.portfolio import Holding
+        h = Holding(shares=100, current_price=50.0)
+        self.assertEqual(h.market_value, 5000.0)
+
+    def test_cost_basis(self):
+        from invest_signal_kit.portfolio import Holding
+        h = Holding(shares=100, entry_price=45.0, current_price=50.0)
+        self.assertEqual(h.cost_basis, 4500.0)
+
+    def test_unrealized_pnl_long(self):
+        from invest_signal_kit.portfolio import Holding
+        h = Holding(shares=100, entry_price=45.0, current_price=50.0, direction="long")
+        self.assertEqual(h.unrealized_pnl, 500.0)
+
+    def test_unrealized_pnl_short(self):
+        from invest_signal_kit.portfolio import Holding
+        h = Holding(shares=100, entry_price=50.0, current_price=45.0, direction="short")
+        self.assertEqual(h.unrealized_pnl, 500.0)
+
+    def test_unrealized_pnl_pct(self):
+        from invest_signal_kit.portfolio import Holding
+        h = Holding(shares=100, entry_price=40.0, current_price=50.0)
+        self.assertAlmostEqual(h.unrealized_pnl_pct, 25.0, places=1)
+
+    def test_position_risk(self):
+        from invest_signal_kit.portfolio import Holding
+        h = Holding(shares=100, current_price=50.0, stop_price=45.0)
+        self.assertEqual(h.position_risk, 500.0)
+
+    def test_position_risk_no_stop(self):
+        from invest_signal_kit.portfolio import Holding
+        h = Holding(shares=100, current_price=50.0, stop_price=0.0)
+        self.assertEqual(h.position_risk, 0.0)
+
+
+class TestExposureCalculation(unittest.TestCase):
+    """Test exposure calculation."""
+
+    def test_basic_exposures(self):
+        from invest_signal_kit.portfolio import Holding, calculate_exposures
+        holdings = [
+            Holding(code="A", shares=100, current_price=50.0, sector="Tech"),
+            Holding(code="B", shares=200, current_price=25.0, sector="Finance"),
+        ]
+        report = calculate_exposures(holdings, cash=2500.0)
+        self.assertAlmostEqual(report.total_value, 12500.0, places=0)
+        self.assertAlmostEqual(report.invested_value, 10000.0, places=0)
+        self.assertAlmostEqual(report.invested_pct, 80.0, places=0)
+
+    def test_position_exposure_pct(self):
+        from invest_signal_kit.portfolio import Holding, calculate_exposures
+        holdings = [Holding(code="A", shares=100, current_price=100.0)]
+        report = calculate_exposures(holdings, cash=0.0)
+        self.assertAlmostEqual(report.positions[0].exposure_pct, 100.0, places=0)
+
+    def test_sector_aggregation(self):
+        from invest_signal_kit.portfolio import Holding, calculate_exposures
+        holdings = [
+            Holding(code="A", shares=100, current_price=50.0, sector="Tech"),
+            Holding(code="B", shares=100, current_price=50.0, sector="Tech"),
+            Holding(code="C", shares=100, current_price=50.0, sector="Finance"),
+        ]
+        report = calculate_exposures(holdings, cash=0.0)
+        sectors = {s.sector: s for s in report.sectors}
+        self.assertAlmostEqual(sectors["Tech"].exposure_pct, 66.67, places=1)
+        self.assertEqual(sectors["Tech"].position_count, 2)
+
+    def test_risk_calculation(self):
+        from invest_signal_kit.portfolio import Holding, calculate_exposures
+        holdings = [
+            Holding(code="A", shares=100, current_price=50.0, stop_price=45.0),
+        ]
+        report = calculate_exposures(holdings, cash=5000.0)
+        # risk = 100 * (50 - 45) = 500
+        self.assertAlmostEqual(report.total_risk, 500.0, places=0)
+        # risk_pct = 500 / 10000 * 100 = 5%
+        self.assertAlmostEqual(report.total_risk_pct, 5.0, places=1)
+
+
+class TestConcentrationCheck(unittest.TestCase):
+    """Test concentration limit checking."""
+
+    def test_position_over_limit(self):
+        from invest_signal_kit.portfolio import Holding, PortfolioPolicy, check_concentration
+        holdings = [Holding(code="A", shares=1000, current_price=30.0)]
+        policy = PortfolioPolicy(max_position_pct=20.0)
+        violations = check_concentration(holdings, policy, 100000.0)
+        self.assertTrue(any(v.rule == "position_concentration" for v in violations))
+
+    def test_position_under_limit(self):
+        from invest_signal_kit.portfolio import Holding, PortfolioPolicy, check_concentration
+        holdings = [Holding(code="A", shares=100, current_price=50.0)]
+        policy = PortfolioPolicy(max_position_pct=20.0)
+        violations = check_concentration(holdings, policy, 100000.0)
+        self.assertFalse(any(v.rule == "position_concentration" for v in violations))
+
+    def test_sector_over_limit(self):
+        from invest_signal_kit.portfolio import Holding, PortfolioPolicy, check_concentration
+        holdings = [
+            Holding(code="A", shares=500, current_price=50.0, sector="Tech"),
+            Holding(code="B", shares=500, current_price=50.0, sector="Tech"),
+        ]
+        policy = PortfolioPolicy(max_sector_pct=30.0)
+        violations = check_concentration(holdings, policy, 100000.0)
+        self.assertTrue(any(v.rule == "sector_concentration" for v in violations))
+
+    def test_sector_override_limit(self):
+        from invest_signal_kit.portfolio import Holding, PortfolioPolicy, check_concentration
+        holdings = [Holding(code="A", shares=500, current_price=50.0, sector="Tech")]
+        policy = PortfolioPolicy(max_sector_pct=50.0, sector_limits={"Tech": 20.0})
+        violations = check_concentration(holdings, policy, 100000.0)
+        self.assertTrue(any(v.rule == "sector_concentration" for v in violations))
+
+    def test_position_risk_limit(self):
+        from invest_signal_kit.portfolio import Holding, PortfolioPolicy, check_concentration
+        holdings = [Holding(code="A", shares=1000, current_price=50.0, stop_price=40.0)]
+        policy = PortfolioPolicy(max_candidate_risk_pct=2.0)
+        violations = check_concentration(holdings, policy, 100000.0)
+        # risk = 1000 * 10 = 10000, risk_pct = 10%
+        self.assertTrue(any(v.rule == "position_risk_limit" for v in violations))
+
+    def test_empty_portfolio(self):
+        from invest_signal_kit.portfolio import PortfolioPolicy, check_concentration
+        violations = check_concentration([], PortfolioPolicy(), 0.0)
+        self.assertEqual(violations, [])
+
+
+class TestRiskBudget(unittest.TestCase):
+    """Test risk budget checking."""
+
+    def test_under_budget(self):
+        from invest_signal_kit.portfolio import Holding, PortfolioPolicy, check_risk_budget
+        holdings = [Holding(code="A", shares=100, current_price=50.0, stop_price=45.0)]
+        policy = PortfolioPolicy(max_risk_budget_pct=10.0)
+        result = check_risk_budget(holdings, 100000.0, policy)
+        self.assertFalse(result.over_budget)
+        self.assertGreater(result.remaining_budget, 0)
+
+    def test_over_budget(self):
+        from invest_signal_kit.portfolio import Holding, PortfolioPolicy, check_risk_budget
+        holdings = [Holding(code="A", shares=1000, current_price=50.0, stop_price=40.0)]
+        policy = PortfolioPolicy(max_risk_budget_pct=5.0)
+        result = check_risk_budget(holdings, 100000.0, policy)
+        # risk = 1000 * 10 = 10000, budget = 5000
+        self.assertTrue(result.over_budget)
+
+    def test_utilization_pct(self):
+        from invest_signal_kit.portfolio import Holding, PortfolioPolicy, check_risk_budget
+        holdings = [Holding(code="A", shares=100, current_price=50.0, stop_price=45.0)]
+        policy = PortfolioPolicy(max_risk_budget_pct=10.0)
+        result = check_risk_budget(holdings, 100000.0, policy)
+        # risk = 500, budget = 10000, utilization = 5%
+        self.assertAlmostEqual(result.utilization_pct, 5.0, places=0)
+
+    def test_position_risks_dict(self):
+        from invest_signal_kit.portfolio import Holding, PortfolioPolicy, check_risk_budget
+        holdings = [Holding(code="A", shares=100, current_price=50.0, stop_price=45.0)]
+        result = check_risk_budget(holdings, 100000.0, PortfolioPolicy())
+        self.assertIn("A", result.position_risks)
+        self.assertEqual(result.position_risks["A"], 500.0)
+
+
+class TestCandidateRanking(unittest.TestCase):
+    """Test candidate signal ranking."""
+
+    def test_passing_candidate(self):
+        from invest_signal_kit.portfolio import CandidateSignal, Holding, PortfolioPolicy, rank_candidates
+        candidates = [CandidateSignal(
+            code="X", signal_score=70, ev_quality="positive_ev",
+            position_size_pct=5.0, risk_pct=1.0, sector="Tech",
+        )]
+        result = rank_candidates(candidates, [], PortfolioPolicy(), 100000.0)
+        self.assertTrue(result[0].passes_watchlist)
+
+    def test_failing_low_score(self):
+        from invest_signal_kit.portfolio import CandidateSignal, PortfolioPolicy, rank_candidates
+        candidates = [CandidateSignal(code="X", signal_score=40, ev_quality="positive_ev")]
+        result = rank_candidates(candidates, [], PortfolioPolicy(watchlist_min_score=60), 100000.0)
+        self.assertFalse(result[0].passes_watchlist)
+        self.assertTrue(any("below min" in b for b in result[0].blockers))
+
+    def test_failing_negative_ev(self):
+        from invest_signal_kit.portfolio import CandidateSignal, PortfolioPolicy, rank_candidates
+        candidates = [CandidateSignal(code="X", signal_score=70, ev_quality="negative_ev")]
+        result = rank_candidates(candidates, [], PortfolioPolicy(), 100000.0)
+        self.assertFalse(result[0].passes_watchlist)
+        self.assertTrue(any("negative" in b.lower() for b in result[0].blockers))
+
+    def test_failing_risk_limit(self):
+        from invest_signal_kit.portfolio import CandidateSignal, PortfolioPolicy, rank_candidates
+        candidates = [CandidateSignal(code="X", signal_score=70, ev_quality="positive_ev", risk_pct=5.0)]
+        result = rank_candidates(candidates, [], PortfolioPolicy(max_candidate_risk_pct=2.0), 100000.0)
+        self.assertFalse(result[0].passes_watchlist)
+
+    def test_ranking_order(self):
+        from invest_signal_kit.portfolio import CandidateSignal, PortfolioPolicy, rank_candidates
+        candidates = [
+            CandidateSignal(code="A", signal_score=60, ev_quality="positive_ev"),
+            CandidateSignal(code="B", signal_score=80, ev_quality="positive_ev"),
+            CandidateSignal(code="C", signal_score=70, ev_quality="positive_ev"),
+        ]
+        result = rank_candidates(candidates, [], PortfolioPolicy(), 100000.0)
+        self.assertEqual(result[0].code, "B")
+        self.assertEqual(result[1].code, "C")
+        self.assertEqual(result[2].code, "A")
+        self.assertEqual(result[0].rank, 1)
+
+    def test_sector_breach_blocker(self):
+        from invest_signal_kit.portfolio import CandidateSignal, Holding, PortfolioPolicy, rank_candidates
+        holdings = [Holding(code="A", shares=500, current_price=50.0, sector="Tech")]
+        candidates = [CandidateSignal(
+            code="B", signal_score=70, ev_quality="positive_ev",
+            sector="Tech", position_size_pct=20.0,
+        )]
+        policy = PortfolioPolicy(max_sector_pct=40.0)
+        result = rank_candidates(candidates, holdings, policy, 100000.0)
+        # existing sector = 25000/100000 = 25%, added = 20%, total = 45% > 40%
+        self.assertFalse(result[0].passes_watchlist)
+
+
+class TestStressTest(unittest.TestCase):
+    """Test stress testing."""
+
+    def test_market_crash(self):
+        from invest_signal_kit.portfolio import Holding, StressScenario, run_stress_test
+        holdings = [Holding(code="A", shares=100, current_price=100.0)]
+        scenario = StressScenario(name="Crash", market_shock_pct=-10.0)
+        result = run_stress_test(holdings, 0.0, scenario)
+        # original = 10000, shocked = 9000, loss = 1000
+        self.assertAlmostEqual(result.total_loss, 1000.0, places=0)
+        self.assertAlmostEqual(result.total_loss_pct, 10.0, places=0)
+
+    def test_sector_shock(self):
+        from invest_signal_kit.portfolio import Holding, StressScenario, run_stress_test
+        holdings = [
+            Holding(code="A", shares=100, current_price=100.0, sector="Tech"),
+            Holding(code="B", shares=100, current_price=100.0, sector="Finance"),
+        ]
+        scenario = StressScenario(name="Tech crash", sector_shocks={"Tech": -20.0})
+        result = run_stress_test(holdings, 0.0, scenario)
+        # A loses 2000, B loses 0, total loss = 2000
+        self.assertAlmostEqual(result.total_loss, 2000.0, places=0)
+
+    def test_single_name_shock(self):
+        from invest_signal_kit.portfolio import Holding, StressScenario, run_stress_test
+        holdings = [Holding(code="A", shares=100, current_price=100.0)]
+        scenario = StressScenario(name="A crashes", single_name_shocks={"A": -30.0})
+        result = run_stress_test(holdings, 0.0, scenario)
+        self.assertAlmostEqual(result.total_loss, 3000.0, places=0)
+
+    def test_liquidity_haircut(self):
+        from invest_signal_kit.portfolio import Holding, StressScenario, run_stress_test
+        holdings = [Holding(code="A", shares=100, current_price=100.0)]
+        scenario = StressScenario(name="Liquidity crisis", liquidity_haircut_pct=10.0)
+        result = run_stress_test(holdings, 0.0, scenario)
+        # 10000 * (1 - 0.10) = 9000, loss = 1000
+        self.assertAlmostEqual(result.total_loss, 1000.0, places=0)
+
+    def test_cash_unaffected(self):
+        from invest_signal_kit.portfolio import Holding, StressScenario, run_stress_test
+        holdings = [Holding(code="A", shares=100, current_price=100.0)]
+        scenario = StressScenario(name="Crash", market_shock_pct=-50.0)
+        result = run_stress_test(holdings, 10000.0, scenario)
+        # total = 20000, shocked = 5000 + 10000 = 15000, loss = 5000
+        self.assertAlmostEqual(result.shocked_portfolio_value, 15000.0, places=0)
+
+    def test_drawdown_breach(self):
+        from invest_signal_kit.portfolio import Holding, StressScenario, run_stress_test
+        holdings = [Holding(code="A", shares=100, current_price=100.0)]
+        scenario = StressScenario(name="Crash", market_shock_pct=-20.0)
+        result = run_stress_test(holdings, 0.0, scenario, max_drawdown_pct=15.0)
+        self.assertTrue(result.breaches_drawdown_limit)
+
+    def test_additive_shocks(self):
+        from invest_signal_kit.portfolio import Holding, StressScenario, run_stress_test
+        holdings = [Holding(code="A", shares=100, current_price=100.0, sector="Tech")]
+        scenario = StressScenario(
+            name="Combined", market_shock_pct=-5.0,
+            sector_shocks={"Tech": -10.0}, single_name_shocks={"A": -5.0},
+        )
+        result = run_stress_test(holdings, 0.0, scenario)
+        # total shock = -5 + -10 + -5 = -20%, loss = 2000
+        self.assertAlmostEqual(result.total_loss, 2000.0, places=0)
+        self.assertAlmostEqual(result.positions[0].applied_shock_pct, -20.0, places=0)
+
+
+class TestPortfolioEvaluation(unittest.TestCase):
+    """Test full portfolio evaluation pipeline."""
+
+    def test_basic_evaluation(self):
+        from invest_signal_kit.portfolio import (
+            Holding, PortfolioPolicy, evaluate_portfolio, ExposureReport,
+        )
+        holdings = [Holding(code="A", shares=100, current_price=50.0, stop_price=45.0)]
+        result = evaluate_portfolio(holdings, 95000.0, PortfolioPolicy())
+        self.assertIsInstance(result.exposure_report, ExposureReport)
+        # Position = 5000/100000 = 5% (under 20% limit)
+        # Risk = 500/100000 = 0.5% (under 2% limit)
+        self.assertEqual(len(result.blockers), 0)
+
+    def test_evaluation_with_candidates(self):
+        from invest_signal_kit.portfolio import (
+            Holding, PortfolioPolicy, CandidateSignal, evaluate_portfolio,
+        )
+        holdings = [Holding(code="A", shares=100, current_price=50.0)]
+        candidates = [CandidateSignal(code="B", signal_score=70, ev_quality="positive_ev")]
+        result = evaluate_portfolio(holdings, 5000.0, PortfolioPolicy(), candidates=candidates)
+        self.assertEqual(len(result.candidate_rankings), 1)
+
+    def test_evaluation_with_scenarios(self):
+        from invest_signal_kit.portfolio import (
+            Holding, PortfolioPolicy, StressScenario, evaluate_portfolio,
+        )
+        holdings = [Holding(code="A", shares=100, current_price=50.0)]
+        scenarios = [StressScenario(name="Crash", market_shock_pct=-10.0)]
+        result = evaluate_portfolio(holdings, 5000.0, PortfolioPolicy(), scenarios=scenarios)
+        self.assertEqual(len(result.stress_results), 1)
+
+    def test_risk_budget_blocker(self):
+        from invest_signal_kit.portfolio import (
+            Holding, PortfolioPolicy, evaluate_portfolio,
+        )
+        holdings = [Holding(code="A", shares=1000, current_price=50.0, stop_price=40.0)]
+        policy = PortfolioPolicy(max_risk_budget_pct=5.0)
+        result = evaluate_portfolio(holdings, 0.0, policy)
+        self.assertTrue(any(b.rule == "risk_budget_exceeded" for b in result.blockers))
+
+
+class TestPortfolioLoaders(unittest.TestCase):
+    """Test portfolio data loaders."""
+
+    def test_load_holding(self):
+        from invest_signal_kit.portfolio import load_holding
+        h = load_holding({"code": "A", "shares": 100, "current_price": 50.0})
+        self.assertEqual(h.code, "A")
+        self.assertEqual(h.shares, 100)
+
+    def test_load_policy(self):
+        from invest_signal_kit.portfolio import load_portfolio_policy
+        p = load_portfolio_policy({"max_position_pct": 30, "sector_limits": {"Tech": 20}})
+        self.assertEqual(p.max_position_pct, 30.0)
+        self.assertEqual(p.sector_limits["Tech"], 20.0)
+
+    def test_load_candidate(self):
+        from invest_signal_kit.portfolio import load_candidate_signal
+        c = load_candidate_signal({"code": "X", "signal_score": 75})
+        self.assertEqual(c.code, "X")
+        self.assertEqual(c.signal_score, 75.0)
+
+    def test_load_scenario(self):
+        from invest_signal_kit.portfolio import load_stress_scenario
+        s = load_stress_scenario({"name": "Crash", "market_shock_pct": -15})
+        self.assertEqual(s.name, "Crash")
+        self.assertEqual(s.market_shock_pct, -15.0)
+
+    def test_load_portfolio_state(self):
+        from invest_signal_kit.portfolio import load_portfolio_state
+        data = {
+            "holdings": [{"code": "A", "shares": 100}],
+            "cash": 5000,
+            "policy": {"max_position_pct": 25},
+            "candidates": [{"code": "B", "signal_score": 70}],
+            "scenarios": [{"name": "Crash", "market_shock_pct": -10}],
+        }
+        holdings, cash, policy, candidates, scenarios = load_portfolio_state(data)
+        self.assertEqual(len(holdings), 1)
+        self.assertEqual(cash, 5000.0)
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(len(scenarios), 1)
+
+
+class TestRunPortfolioAnalysis(unittest.TestCase):
+    """Test the run_portfolio_analysis convenience function."""
+
+    def test_basic_analysis(self):
+        from invest_signal_kit.portfolio import run_portfolio_analysis
+        data = {
+            "holdings": [{"code": "A", "shares": 100, "current_price": 50.0}],
+            "cash": 5000,
+        }
+        result = run_portfolio_analysis(data)
+        self.assertIn("exposure_report", result)
+        self.assertIn("risk_budget", result)
+
+    def test_full_analysis(self):
+        from invest_signal_kit.portfolio import run_portfolio_analysis
+        data = json.loads((EXAMPLES / "portfolio_workflow.json").read_text())
+        result = run_portfolio_analysis(data)
+        self.assertIn("exposure_report", result)
+        self.assertIn("candidate_rankings", result)
+        self.assertIn("stress_results", result)
+        self.assertGreater(len(result["stress_results"]), 0)
+
+
+class TestPortfolioMarkdown(unittest.TestCase):
+    """Test portfolio Markdown rendering."""
+
+    def test_render_contains_sections(self):
+        from invest_signal_kit.portfolio import (
+            Holding, PortfolioPolicy, evaluate_portfolio, render_portfolio_markdown,
+        )
+        holdings = [Holding(code="A", name="Test", shares=100, current_price=50.0, sector="Tech")]
+        result = evaluate_portfolio(holdings, 5000.0, PortfolioPolicy())
+        md = render_portfolio_markdown(result)
+        self.assertIn("# Portfolio Risk Report", md)
+        self.assertIn("Position Exposures", md)
+        self.assertIn("Risk Budget", md)
+        self.assertIn("Not investment advice", md)
+
+    def test_render_with_stress(self):
+        from invest_signal_kit.portfolio import (
+            Holding, PortfolioPolicy, StressScenario, evaluate_portfolio,
+            render_portfolio_markdown,
+        )
+        holdings = [Holding(code="A", shares=100, current_price=50.0)]
+        scenarios = [StressScenario(name="Crash", market_shock_pct=-10.0)]
+        result = evaluate_portfolio(holdings, 5000.0, PortfolioPolicy(), scenarios=scenarios)
+        md = render_portfolio_markdown(result)
+        self.assertIn("Stress Test Results", md)
+        self.assertIn("Crash", md)
+
+
+class TestPortfolioCLI(unittest.TestCase):
+    """Test portfolio CLI command."""
+
+    def test_portfolio_json_output(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["portfolio", str(EXAMPLES / "portfolio_workflow.json")])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        data = json.loads(captured.getvalue())
+        self.assertIn("exposure_report", data)
+        self.assertIn("risk_budget", data)
+
+    def test_portfolio_markdown_output(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["portfolio", str(EXAMPLES / "portfolio_workflow.json"), "--format", "markdown"])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        output = captured.getvalue()
+        self.assertIn("# Portfolio Risk Report", output)
+
+    def test_portfolio_invalid_json(self):
+        from invest_signal_kit.cli import main
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
+            f.write("{bad json")
+            f.flush()
+            path = f.name
+        try:
+            ret = main(["portfolio", path])
+            self.assertNotEqual(ret, 0)
+        finally:
+            os.unlink(path)
+
+    def test_portfolio_writes_file(self):
+        from invest_signal_kit.cli import main
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
+            outpath = f.name
+        try:
+            ret = main(["portfolio", str(EXAMPLES / "portfolio_workflow.json"), "-o", outpath])
+            self.assertEqual(ret, 0)
+            data = json.loads(Path(outpath).read_text())
+            self.assertIn("exposure_report", data)
+        finally:
+            os.unlink(outpath)
+
+
+class TestBatchCLI(unittest.TestCase):
+    """Test batch CLI command."""
+
+    def test_batch_json_output(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["batch", str(EXAMPLES / "etf_signal.json"), str(EXAMPLES / "stock_shift_signal.json")])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        data = json.loads(captured.getvalue())
+        self.assertIn("results", data)
+        self.assertEqual(len(data["results"]), 2)
+
+    def test_batch_markdown_output(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["batch", str(EXAMPLES / "etf_signal.json"), "--format", "markdown"])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        output = captured.getvalue()
+        self.assertIn("# Batch Analysis Results", output)
+
+
+class TestPortfolioWorkflowExample(unittest.TestCase):
+    """Test the portfolio_workflow.json example."""
+
+    def test_example_loads(self):
+        from invest_signal_kit.portfolio import load_portfolio_state
+        data = json.loads((EXAMPLES / "portfolio_workflow.json").read_text())
+        holdings, cash, policy, candidates, scenarios = load_portfolio_state(data)
+        self.assertEqual(len(holdings), 5)
+        self.assertGreater(cash, 0)
+        self.assertEqual(len(candidates), 4)
+        self.assertEqual(len(scenarios), 4)
+
+    def test_example_analysis(self):
+        from invest_signal_kit.portfolio import run_portfolio_analysis
+        data = json.loads((EXAMPLES / "portfolio_workflow.json").read_text())
+        result = run_portfolio_analysis(data)
+        self.assertIn("exposure_report", result)
+        self.assertGreater(len(result["candidate_rankings"]), 0)
+        self.assertGreater(len(result["stress_results"]), 0)
+
+    def test_example_cli_json(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["portfolio", str(EXAMPLES / "portfolio_workflow.json")])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        data = json.loads(captured.getvalue())
+        self.assertIn("exposure_report", data)
+
+    def test_example_cli_markdown(self):
+        from invest_signal_kit.cli import main
+        captured = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+        try:
+            ret = main(["portfolio", str(EXAMPLES / "portfolio_workflow.json"), "--format", "md"])
+        finally:
+            sys.stdout = old_stdout
+        self.assertEqual(ret, 0)
+        self.assertIn("Portfolio Risk Report", captured.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

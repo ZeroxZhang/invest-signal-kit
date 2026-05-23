@@ -10,12 +10,13 @@
   <header>
     <div class="header-left">
       <h1>invest-signal-kit</h1>
-      <span class="version">v0.2.0</span>
+      <span class="version">v0.3.0</span>
     </div>
     <nav id="main-nav">
       <button class="nav-btn active" data-tab="signal-lab">Signal Lab</button>
       <button class="nav-btn" data-tab="scorecards">Scorecards</button>
       <button class="nav-btn" data-tab="scenario-sizing">Scenario &amp; Sizing</button>
+      <button class="nav-btn" data-tab="portfolio">Portfolio</button>
       <button class="nav-btn" data-tab="decision-memo">Decision Memo</button>
       <button class="nav-btn" data-tab="examples">Examples</button>
     </nav>
@@ -331,6 +332,150 @@
           </div>
           <div id="sizing-notes" class="notes-list"></div>
         </div>
+      </div>
+    </section>
+
+    <!-- ===== Portfolio ===== -->
+    <section id="portfolio" class="tab-panel">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Portfolio Risk Workstation</h2>
+          <div class="btn-group">
+            <button id="btn-portfolio-load" class="btn btn-sm">Load Example</button>
+            <button id="btn-portfolio-analyze" class="btn btn-sm btn-primary">Analyze</button>
+            <button id="btn-portfolio-copy" class="btn btn-sm">Copy JSON</button>
+          </div>
+        </div>
+        <textarea id="portfolio-editor" spellcheck="false" placeholder="Paste portfolio JSON here (holdings, cash, policy, candidates, scenarios)..."></textarea>
+      </div>
+
+      <!-- Portfolio Summary -->
+      <div class="portfolio-grid">
+        <div class="panel" id="portfolio-summary-panel">
+          <h2>Portfolio Summary</h2>
+          <div class="summary-metrics">
+            <div class="ev-metric">
+              <span class="metric-label">Total Value</span>
+              <span class="metric-value" id="pf-total-value">--</span>
+            </div>
+            <div class="ev-metric">
+              <span class="metric-label">Cash</span>
+              <span class="metric-value" id="pf-cash">--</span>
+            </div>
+            <div class="ev-metric">
+              <span class="metric-label">Invested</span>
+              <span class="metric-value" id="pf-invested">--</span>
+            </div>
+            <div class="ev-metric">
+              <span class="metric-label">Total Risk</span>
+              <span class="metric-value" id="pf-total-risk">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Risk Budget -->
+        <div class="panel" id="risk-budget-panel">
+          <h2>Risk Budget</h2>
+          <div class="risk-budget-bar-container">
+            <div class="risk-budget-bar" id="risk-budget-bar">
+              <div class="risk-budget-fill" id="risk-budget-fill"></div>
+            </div>
+            <span class="risk-budget-label" id="risk-budget-label">0%</span>
+          </div>
+          <div class="summary-metrics" style="margin-top:12px">
+            <div class="ev-metric">
+              <span class="metric-label">Budget</span>
+              <span class="metric-value" id="rb-budget">--</span>
+            </div>
+            <div class="ev-metric">
+              <span class="metric-label">Used</span>
+              <span class="metric-value" id="rb-used">--</span>
+            </div>
+            <div class="ev-metric">
+              <span class="metric-label">Remaining</span>
+              <span class="metric-value" id="rb-remaining">--</span>
+            </div>
+            <div class="ev-metric">
+              <span class="metric-label">Utilization</span>
+              <span class="metric-value" id="rb-utilization">--</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Positions Table -->
+      <div class="panel">
+        <h2>Position Exposures</h2>
+        <div class="table-container">
+          <table class="data-table" id="positions-table">
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Sector</th>
+                <th>Value</th>
+                <th>Exposure %</th>
+                <th>P&L %</th>
+                <th>Risk %</th>
+              </tr>
+            </thead>
+            <tbody id="positions-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Sectors Table -->
+      <div class="panel">
+        <h2>Sector Exposures</h2>
+        <div class="table-container">
+          <table class="data-table" id="sectors-table">
+            <thead>
+              <tr>
+                <th>Sector</th>
+                <th>Value</th>
+                <th>Exposure %</th>
+                <th>Positions</th>
+                <th>Codes</th>
+              </tr>
+            </thead>
+            <tbody id="sectors-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Candidate Watchlist -->
+      <div class="panel">
+        <h2>Candidate Watchlist</h2>
+        <div class="table-container">
+          <table class="data-table" id="candidates-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Code</th>
+                <th>Score</th>
+                <th>Direction</th>
+                <th>Sector</th>
+                <th>Exp Ret %</th>
+                <th>Passes</th>
+                <th>Issues</th>
+              </tr>
+            </thead>
+            <tbody id="candidates-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Stress Tests -->
+      <div class="panel">
+        <h2>Stress Test Results</h2>
+        <div id="stress-results"></div>
+      </div>
+
+      <!-- Blockers & Warnings -->
+      <div class="panel" id="portfolio-issues-panel">
+        <h2>Portfolio Blockers &amp; Warnings</h2>
+        <div id="portfolio-blockers" class="blockers-list"></div>
+        <div id="portfolio-warnings" class="notes-list"></div>
       </div>
     </section>
 

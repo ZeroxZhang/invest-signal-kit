@@ -44,6 +44,20 @@ def main(argv=None) -> int:
     p_memo.add_argument("file", help="Path to JSON file with framework inputs")
     p_memo.add_argument("--output", "-o", help="Output file path (default: stdout)")
 
+    # --- portfolio ---
+    p_port = sub.add_parser("portfolio", help="Run portfolio risk analysis on a portfolio JSON")
+    p_port.add_argument("file", help="Path to portfolio JSON file")
+    p_port.add_argument("--output", "-o", help="Output file path (default: stdout)")
+    p_port.add_argument("--format", choices=["json", "markdown", "md"], default="json",
+                        help="Output format (default: json)")
+
+    # --- batch ---
+    p_batch = sub.add_parser("batch", help="Run framework analysis on multiple signal files")
+    p_batch.add_argument("files", nargs="+", help="Path(s) to signal JSON files")
+    p_batch.add_argument("--output", "-o", help="Output file path (default: stdout)")
+    p_batch.add_argument("--format", choices=["json", "markdown", "md"], default="json",
+                         help="Output format (default: json)")
+
     # --- serve ---
     p_serve = sub.add_parser("serve", help="Serve the web UI locally")
     p_serve.add_argument("--port", type=int, default=8765, help="Port to listen on (default: 8765)")
@@ -53,6 +67,14 @@ def main(argv=None) -> int:
 
     if args.command == "serve":
         return _cmd_serve(args.port, args.bind)
+
+    if args.command == "portfolio":
+        return _cmd_portfolio(args.file, getattr(args, "output", None),
+                              getattr(args, "format", "json"))
+
+    if args.command == "batch":
+        return _cmd_batch(args.files, getattr(args, "output", None),
+                          getattr(args, "format", "json"))
 
     try:
         obj, kind = load_json_file(args.file)
@@ -202,6 +224,101 @@ def _cmd_memo(file_path: str, output: str | None) -> int:
         print(f"Written to {output}")
     else:
         print(md)
+    return 0
+
+
+def _cmd_portfolio(file_path: str, output: str | None, fmt: str) -> int:
+    """Run portfolio risk analysis."""
+    from .portfolio import load_portfolio_state, evaluate_portfolio, render_portfolio_markdown
+    from .portfolio import _result_to_dict
+
+    text = Path(file_path).read_text(encoding="utf-8")
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        print(f"Error: Invalid JSON: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        holdings, cash, policy, candidates, scenarios = load_portfolio_state(data)
+    except (ValueError, KeyError, TypeError) as exc:
+        print(f"Error loading portfolio data: {exc}", file=sys.stderr)
+        return 1
+
+    result = evaluate_portfolio(holdings, cash, policy, candidates, scenarios)
+
+    if fmt in ("markdown", "md"):
+        out = render_portfolio_markdown(result)
+    else:
+        out = json.dumps(_result_to_dict(result), indent=2, ensure_ascii=False)
+
+    if output:
+        Path(output).write_text(out, encoding="utf-8")
+        print(f"Written to {output}")
+    else:
+        print(out)
+    return 0
+
+
+def _cmd_batch(files: list, output: str | None, fmt: str) -> int:
+    """Run framework analysis on multiple signal files."""
+    from .framework import run_full_analysis
+    from .loader import normalize_signal_json
+
+    results = []
+    errors = []
+
+    for file_path in files:
+        text = Path(file_path).read_text(encoding="utf-8")
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            errors.append({"file": file_path, "error": f"Invalid JSON: {exc}"})
+            continue
+
+        signal_data, fw_data = normalize_signal_json(data)
+        signal_data["framework"] = fw_data
+
+        analysis = run_full_analysis(signal_data)
+        analysis["_file"] = file_path
+        analysis["_title"] = signal_data.get("title", Path(file_path).stem)
+        results.append(analysis)
+
+    if fmt in ("markdown", "md"):
+        lines = ["# Batch Analysis Results", ""]
+        for r in results:
+            title = r.pop("_title", "untitled")
+            fpath = r.pop("_file", "")
+            lines.append(f"## {title}")
+            lines.append(f"*Source: {fpath}*")
+            lines.append("")
+            tq = r.get("thesis_quality", {})
+            mc = r.get("market_confirmation", {})
+            re_r = r.get("risk_execution", {})
+            ev = r.get("expected_value", {})
+            dr = r.get("decision_readiness", {})
+            lines.append(f"- Thesis Quality: {tq.get('total', 0)}/100 ({tq.get('grade', '?')})")
+            lines.append(f"- Market Confirmation: {mc.get('total', 0)}/100 ({mc.get('grade', '?')})")
+            lines.append(f"- Risk Execution: {re_r.get('total', 0)}/100 ({re_r.get('grade', '?')})")
+            lines.append(f"- EV: {ev.get('expected_return_pct', 0):+.2f}% ({ev.get('quality', '?')})")
+            lines.append(f"- Recommended: **{dr.get('recommended_level', '?').upper()}**")
+            lines.append("")
+        if errors:
+            lines.append("## Errors")
+            for e in errors:
+                lines.append(f"- {e['file']}: {e['error']}")
+            lines.append("")
+        lines.append("---")
+        lines.append("*Generated by invest-signal-kit batch. Not investment advice.*")
+        out = "\n".join(lines)
+    else:
+        out = json.dumps({"results": results, "errors": errors}, indent=2, ensure_ascii=False)
+
+    if output:
+        Path(output).write_text(out, encoding="utf-8")
+        print(f"Written to {output}")
+    else:
+        print(out)
     return 0
 
 

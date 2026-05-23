@@ -1044,6 +1044,17 @@ function populateExamples() {
       <p>${escHtml(ex.description)}</p>
     `;
     card.addEventListener('click', () => {
+      // Portfolio examples load into Portfolio tab
+      if (ex.type === 'portfolio') {
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        document.querySelector('[data-tab="portfolio"]').classList.add('active');
+        document.getElementById('portfolio').classList.add('active');
+        document.getElementById('portfolio-editor').value = JSON.stringify(ex.data, null, 2);
+        runPortfolioAnalysis();
+        return;
+      }
+
       // Switch to Signal Lab
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -1140,3 +1151,455 @@ function escHtml(s) {
   if (typeof s !== 'string') return '';
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+// ---------------------------------------------------------------------------
+// Portfolio Risk Engine (mirrors invest_signal_kit/portfolio.py)
+// ---------------------------------------------------------------------------
+
+function pct(value, total) { return total > 0 ? (value / total * 100) : 0; }
+
+function portfolioCalculateExposures(holdings, cash) {
+  const investedValue = holdings.reduce((s, h) => s + h.shares * h.current_price, 0);
+  const totalValue = investedValue + cash;
+
+  const positions = holdings.map(h => {
+    const mv = h.shares * h.current_price;
+    const cb = h.shares * h.entry_price;
+    const pnl = h.direction === 'short'
+      ? (h.entry_price - h.current_price) * h.shares
+      : (h.current_price - h.entry_price) * h.shares;
+    const pnlPct = cb > 0 ? (pnl / cb * 100) : 0;
+    const riskPerShare = h.stop_price > 0 ? Math.abs(h.current_price - h.stop_price) : 0;
+    const posRisk = h.shares * riskPerShare;
+    return {
+      code: h.code, name: h.name, sector: h.sector || 'Unknown', asset_type: h.asset_type,
+      market_value: round2(mv), exposure_pct: round2(pct(mv, totalValue)),
+      unrealized_pnl: round2(pnl), unrealized_pnl_pct: round2(pnlPct),
+      position_risk: round2(posRisk), risk_pct: round2(pct(posRisk, totalValue)),
+    };
+  });
+
+  // Sector aggregation
+  const sectorMap = {};
+  for (const h of holdings) {
+    const s = h.sector || 'Unknown';
+    if (!sectorMap[s]) sectorMap[s] = { value: 0, count: 0, codes: [] };
+    sectorMap[s].value += h.shares * h.current_price;
+    sectorMap[s].count++;
+    sectorMap[s].codes.push(h.code);
+  }
+  const sectors = Object.entries(sectorMap).map(([s, info]) => ({
+    sector: s, market_value: round2(info.value),
+    exposure_pct: round2(pct(info.value, totalValue)),
+    position_count: info.count, position_codes: info.codes,
+  }));
+
+  const totalRisk = holdings.reduce((s, h) => {
+    const rps = h.stop_price > 0 ? Math.abs(h.current_price - h.stop_price) : 0;
+    return s + h.shares * rps;
+  }, 0);
+
+  return {
+    total_value: round2(totalValue), cash: round2(cash),
+    invested_value: round2(investedValue), invested_pct: round2(pct(investedValue, totalValue)),
+    positions, sectors,
+    total_risk: round2(totalRisk), total_risk_pct: round2(pct(totalRisk, totalValue)),
+  };
+}
+
+function portfolioCheckConcentration(holdings, policy, totalValue) {
+  const violations = [];
+  if (totalValue <= 0) return violations;
+
+  for (const h of holdings) {
+    const mv = h.shares * h.current_price;
+    const posPct = pct(mv, totalValue);
+    if (posPct > policy.max_position_pct) {
+      violations.push({
+        rule: 'position_concentration', severity: 'warning',
+        message: `${h.code} is ${posPct.toFixed(1)}% of portfolio, limit ${policy.max_position_pct}%`,
+        actual_pct: round2(posPct), limit_pct: policy.max_position_pct,
+      });
+    }
+  }
+
+  const sectorValues = {};
+  for (const h of holdings) {
+    const s = h.sector || 'Unknown';
+    sectorValues[s] = (sectorValues[s] || 0) + h.shares * h.current_price;
+  }
+  for (const [sector, value] of Object.entries(sectorValues)) {
+    const sp = pct(value, totalValue);
+    const limit = (policy.sector_limits && policy.sector_limits[sector]) || policy.max_sector_pct;
+    if (sp > limit) {
+      violations.push({
+        rule: 'sector_concentration', severity: 'warning',
+        message: `Sector '${sector}' is ${sp.toFixed(1)}%, limit ${limit}%`,
+        actual_pct: round2(sp), limit_pct: limit,
+      });
+    }
+  }
+
+  for (const h of holdings) {
+    const rps = h.stop_price > 0 ? Math.abs(h.current_price - h.stop_price) : 0;
+    const rp = pct(h.shares * rps, totalValue);
+    if (rp > policy.max_candidate_risk_pct) {
+      violations.push({
+        rule: 'position_risk_limit', severity: 'error',
+        message: `${h.code} risk is ${rp.toFixed(1)}%, limit ${policy.max_candidate_risk_pct}%`,
+        actual_pct: round2(rp), limit_pct: policy.max_candidate_risk_pct,
+      });
+    }
+  }
+  return violations;
+}
+
+function portfolioCheckRiskBudget(holdings, totalValue, policy) {
+  const budget = totalValue * (policy.max_risk_budget_pct / 100);
+  const totalRisk = holdings.reduce((s, h) => {
+    const rps = h.stop_price > 0 ? Math.abs(h.current_price - h.stop_price) : 0;
+    return s + h.shares * rps;
+  }, 0);
+  const remaining = Math.max(0, budget - totalRisk);
+  const utilization = pct(totalRisk, budget);
+  const posRisks = {};
+  for (const h of holdings) {
+    const rps = h.stop_price > 0 ? Math.abs(h.current_price - h.stop_price) : 0;
+    posRisks[h.code] = round2(h.shares * rps);
+  }
+  return {
+    total_risk: round2(totalRisk), total_risk_pct: round2(pct(totalRisk, totalValue)),
+    risk_budget: round2(budget), risk_budget_pct: policy.max_risk_budget_pct,
+    remaining_budget: round2(remaining), remaining_budget_pct: round2(pct(remaining, totalValue)),
+    utilization_pct: round2(utilization), over_budget: totalRisk > budget,
+    position_risks: posRisks,
+  };
+}
+
+function portfolioRankCandidates(candidates, holdings, policy, totalValue) {
+  const sectorValues = {};
+  for (const h of holdings) {
+    const s = h.sector || 'Unknown';
+    sectorValues[s] = (sectorValues[s] || 0) + h.shares * h.current_price;
+  }
+
+  return candidates.map((c, i) => {
+    const blockers = [];
+    const warnings = [];
+
+    if (c.signal_score < policy.watchlist_min_score)
+      blockers.push(`Score ${c.signal_score} below min ${policy.watchlist_min_score}`);
+    if (c.ev_quality === 'negative_ev')
+      blockers.push('Expected value is negative');
+    if (c.position_size_pct > 0 && c.position_size_pct > policy.max_position_pct)
+      blockers.push(`Size ${c.position_size_pct}% exceeds limit ${policy.max_position_pct}%`);
+    if (c.sector) {
+      const existing = sectorValues[c.sector] || 0;
+      const added = totalValue * (c.position_size_pct / 100);
+      const newPct = pct(existing + added, totalValue);
+      const limit = (policy.sector_limits && policy.sector_limits[c.sector]) || policy.max_sector_pct;
+      if (newPct > limit)
+        blockers.push(`Sector '${c.sector}' would be ${newPct.toFixed(1)}%, limit ${limit}%`);
+    }
+    if (c.risk_pct > policy.max_candidate_risk_pct)
+      blockers.push(`Risk ${c.risk_pct}% exceeds per-trade limit ${policy.max_candidate_risk_pct}%`);
+    if (['information', 'watch'].includes(c.action_level) && c.signal_score >= policy.watchlist_min_score)
+      warnings.push(`Signal at '${c.action_level}' level`);
+    if (c.thesis_quality > 0 && c.thesis_quality < 50)
+      warnings.push(`Low thesis quality (${c.thesis_quality})`);
+
+    return {
+      code: c.code, name: c.name, direction: c.direction, sector: c.sector,
+      signal_score: c.signal_score, action_level: c.action_level,
+      expected_return_pct: c.expected_return_pct, risk_pct: c.risk_pct,
+      position_size_pct: c.position_size_pct, passes_watchlist: blockers.length === 0,
+      blockers, warnings, rank: 0,
+    };
+  }).sort((a, b) => {
+    if (a.passes_watchlist !== b.passes_watchlist) return a.passes_watchlist ? -1 : 1;
+    if (a.signal_score !== b.signal_score) return b.signal_score - a.signal_score;
+    return b.expected_return_pct - a.expected_return_pct;
+  }).map((r, i) => { r.rank = i + 1; return r; });
+}
+
+function portfolioRunStressTest(holdings, cash, scenario, maxDrawdownPct) {
+  const investedValue = holdings.reduce((s, h) => s + h.shares * h.current_price, 0);
+  const totalValue = investedValue + cash;
+
+  const positions = [];
+  let totalShocked = 0;
+  for (const h of holdings) {
+    let shock = scenario.market_shock_pct || 0;
+    if (h.sector && scenario.sector_shocks && scenario.sector_shocks[h.sector])
+      shock += scenario.sector_shocks[h.sector];
+    if (scenario.single_name_shocks && scenario.single_name_shocks[h.code])
+      shock += scenario.single_name_shocks[h.code];
+
+    let sv = h.shares * h.current_price * (1 + shock / 100);
+    if (scenario.liquidity_haircut_pct > 0)
+      sv *= (1 - scenario.liquidity_haircut_pct / 100);
+
+    const loss = h.shares * h.current_price - sv;
+    const lossPct = h.shares * h.current_price > 0 ? pct(loss, h.shares * h.current_price) : 0;
+    positions.push({
+      code: h.code, name: h.name, sector: h.sector || 'Unknown',
+      original_value: round2(h.shares * h.current_price), shocked_value: round2(sv),
+      loss: round2(loss), loss_pct: round2(lossPct), applied_shock_pct: round2(shock),
+    });
+    totalShocked += sv;
+  }
+
+  totalShocked += cash;
+  const totalLoss = totalValue - totalShocked;
+  const totalLossPct = pct(totalLoss, totalValue);
+
+  return {
+    scenario_name: scenario.name, description: scenario.description || '',
+    original_portfolio_value: round2(totalValue), shocked_portfolio_value: round2(totalShocked),
+    total_loss: round2(totalLoss), total_loss_pct: round2(totalLossPct), positions,
+    breaches_drawdown_limit: totalLossPct > maxDrawdownPct,
+  };
+}
+
+function portfolioEvaluate(data) {
+  const holdings = (data.holdings || []).map(h => ({
+    code: h.code || '', name: h.name || '', asset_type: h.asset_type || 'stock',
+    sector: h.sector || '', shares: Number(h.shares) || 0,
+    entry_price: Number(h.entry_price) || 0, current_price: Number(h.current_price) || 0,
+    stop_price: Number(h.stop_price) || 0, direction: h.direction || 'long',
+  }));
+  const cash = Number(data.cash) || 0;
+  const policy = {
+    max_position_pct: Number(data.policy?.max_position_pct) || 20,
+    max_sector_pct: Number(data.policy?.max_sector_pct) || 35,
+    max_risk_budget_pct: Number(data.policy?.max_risk_budget_pct) || 6,
+    max_drawdown_pct: Number(data.policy?.max_drawdown_pct) || 15,
+    watchlist_min_score: Number(data.policy?.watchlist_min_score) || 60,
+    max_candidate_risk_pct: Number(data.policy?.max_candidate_risk_pct) || 2,
+    sector_limits: data.policy?.sector_limits || {},
+  };
+  const candidates = (data.candidates || []).map(c => ({
+    code: c.code || '', name: c.name || '', direction: c.direction || 'bullish',
+    asset_type: c.asset_type || 'stock', sector: c.sector || '',
+    expected_return_pct: Number(c.expected_return_pct) || 0,
+    risk_pct: Number(c.risk_pct) || 0, position_size_pct: Number(c.position_size_pct) || 0,
+    signal_score: Number(c.signal_score) || 0, action_level: c.action_level || 'information',
+    thesis_quality: Number(c.thesis_quality) || 0,
+    market_confirmation: Number(c.market_confirmation) || 0,
+    risk_execution: Number(c.risk_execution) || 0,
+    ev_quality: c.ev_quality || 'negative_ev',
+  }));
+  const scenarios = (data.scenarios || []).map(s => ({
+    name: s.name || '', description: s.description || '',
+    market_shock_pct: Number(s.market_shock_pct) || 0,
+    sector_shocks: s.sector_shocks || {},
+    single_name_shocks: s.single_name_shocks || {},
+    liquidity_haircut_pct: Number(s.liquidity_haircut_pct) || 0,
+  }));
+
+  const exposureReport = portfolioCalculateExposures(holdings, cash);
+  const totalValue = exposureReport.total_value;
+  const concentrationViolations = portfolioCheckConcentration(holdings, policy, totalValue);
+  const riskBudget = portfolioCheckRiskBudget(holdings, totalValue, policy);
+  const candidateRankings = candidates.length > 0
+    ? portfolioRankCandidates(candidates, holdings, policy, totalValue) : [];
+  const stressResults = scenarios.map(sc =>
+    portfolioRunStressTest(holdings, cash, sc, policy.max_drawdown_pct));
+
+  const blockers = [];
+  const warnings = [];
+  if (riskBudget.over_budget)
+    blockers.push({ rule: 'risk_budget_exceeded', severity: 'error',
+      message: `Risk budget exceeded: ${riskBudget.utilization_pct.toFixed(1)}% utilized` });
+  for (const v of concentrationViolations) {
+    if (v.severity === 'error') blockers.push(v);
+    else warnings.push(v);
+  }
+  for (const sr of stressResults) {
+    if (sr.breaches_drawdown_limit)
+      blockers.push({ rule: 'stress_drawdown_breach', severity: 'error',
+        message: `'${sr.scenario_name}' causes ${sr.total_loss_pct.toFixed(1)}% loss, exceeds limit` });
+  }
+
+  return { exposure_report: exposureReport, concentration_violations: concentrationViolations,
+    risk_budget: riskBudget, candidate_rankings: candidateRankings,
+    stress_results: stressResults, blockers, warnings };
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio UI
+// ---------------------------------------------------------------------------
+
+const PORTFOLIO_EXAMPLE = {
+  holdings: [
+    { code: '512480', name: 'Semiconductor ETF', asset_type: 'ETF', sector: 'Technology', shares: 50000, entry_price: 1.02, current_price: 1.08, stop_price: 0.96, direction: 'long' },
+    { code: '300750', name: 'CATL', asset_type: 'stock', sector: 'New Energy', shares: 800, entry_price: 210, current_price: 225.5, stop_price: 195, direction: 'long' },
+    { code: '600519', name: 'Kweichow Moutai', asset_type: 'stock', sector: 'Consumer', shares: 200, entry_price: 1680, current_price: 1620, stop_price: 1550, direction: 'long' },
+    { code: '510300', name: 'CSI 300 ETF', asset_type: 'ETF', sector: 'Broad Market', shares: 30000, entry_price: 3.85, current_price: 3.92, stop_price: 3.70, direction: 'long' },
+    { code: '601318', name: 'Ping An Insurance', asset_type: 'stock', sector: 'Financials', shares: 1500, entry_price: 45, current_price: 48.2, stop_price: 42, direction: 'long' },
+  ],
+  cash: 150000,
+  policy: { max_position_pct: 25, max_sector_pct: 40, max_risk_budget_pct: 8, max_drawdown_pct: 15, watchlist_min_score: 55, max_candidate_risk_pct: 2, sector_limits: { Technology: 30 } },
+  candidates: [
+    { code: '688981', name: 'SMIC', direction: 'bullish', sector: 'Technology', expected_return_pct: 12, risk_pct: 5, position_size_pct: 8, signal_score: 72, action_level: 'candidate', thesis_quality: 68, market_confirmation: 55, risk_execution: 62, ev_quality: 'positive_ev' },
+    { code: '002594', name: 'BYD', direction: 'bullish', sector: 'New Energy', expected_return_pct: 8, risk_pct: 4, position_size_pct: 6, signal_score: 65, action_level: 'candidate', thesis_quality: 60, market_confirmation: 50, risk_execution: 58, ev_quality: 'marginal' },
+    { code: '600036', name: 'China Merchants Bank', direction: 'bullish', sector: 'Financials', expected_return_pct: 5, risk_pct: 3, position_size_pct: 5, signal_score: 58, action_level: 'watch', thesis_quality: 52, market_confirmation: 45, risk_execution: 48, ev_quality: 'marginal' },
+    { code: '000001', name: 'PetroChina', direction: 'bearish', sector: 'Energy', expected_return_pct: -2, risk_pct: 3, position_size_pct: 4, signal_score: 42, action_level: 'information', thesis_quality: 38, market_confirmation: 30, risk_execution: 25, ev_quality: 'negative_ev' },
+  ],
+  scenarios: [
+    { name: 'Market Crash (-15%)', description: 'Broad market selloff', market_shock_pct: -15 },
+    { name: 'Tech Sector Shock', description: 'Tech selloff with spillover', market_shock_pct: -5, sector_shocks: { Technology: -20, 'New Energy': -10 } },
+    { name: 'Single-Name Crash (Moutai)', description: 'Moutai regulatory crackdown', market_shock_pct: 0, single_name_shocks: { '600519': -25 } },
+    { name: 'Liquidity Crisis', description: 'Market-wide liquidity dry-up', market_shock_pct: -8, liquidity_haircut_pct: 10 },
+  ],
+};
+
+function renderPortfolioUI(result) {
+  const er = result.exposure_report;
+  const rb = result.risk_budget;
+
+  // Summary
+  document.getElementById('pf-total-value').textContent = formatNum(er.total_value);
+  document.getElementById('pf-cash').textContent = formatNum(er.cash);
+  document.getElementById('pf-invested').textContent = formatNum(er.invested_value);
+  const riskEl = document.getElementById('pf-total-risk');
+  riskEl.textContent = formatNum(er.total_risk) + ' (' + er.total_risk_pct.toFixed(1) + '%)';
+  riskEl.className = 'metric-value ' + (er.total_risk_pct > 5 ? 'negative' : er.total_risk_pct > 3 ? 'marginal' : 'positive');
+
+  // Risk budget
+  document.getElementById('rb-budget').textContent = formatNum(rb.risk_budget);
+  document.getElementById('rb-used').textContent = formatNum(rb.total_risk);
+  document.getElementById('rb-remaining').textContent = formatNum(rb.remaining_budget);
+  document.getElementById('rb-utilization').textContent = rb.utilization_pct.toFixed(1) + '%';
+  const fill = document.getElementById('risk-budget-fill');
+  fill.style.width = Math.min(100, rb.utilization_pct) + '%';
+  fill.className = 'risk-budget-fill' + (rb.over_budget ? ' danger' : rb.utilization_pct > 75 ? ' warning' : '');
+  document.getElementById('risk-budget-label').textContent = rb.utilization_pct.toFixed(1) + '%';
+
+  // Positions table
+  const ptb = document.getElementById('positions-tbody');
+  ptb.innerHTML = er.positions.map(p => {
+    const pnlCls = p.unrealized_pnl_pct >= 0 ? 'positive' : 'negative';
+    const riskCls = p.risk_pct > 2 ? 'negative' : p.risk_pct > 1 ? 'warning-text' : '';
+    return `<tr>
+      <td>${escHtml(p.code)}</td><td>${escHtml(p.name)}</td><td>${escHtml(p.sector)}</td>
+      <td>${formatNum(p.market_value)}</td><td>${p.exposure_pct.toFixed(1)}%</td>
+      <td class="${pnlCls}">${p.unrealized_pnl_pct >= 0 ? '+' : ''}${p.unrealized_pnl_pct.toFixed(1)}%</td>
+      <td class="${riskCls}">${p.risk_pct.toFixed(1)}%</td>
+    </tr>`;
+  }).join('');
+
+  // Sectors table
+  const stb = document.getElementById('sectors-tbody');
+  stb.innerHTML = er.sectors.map(s => `<tr>
+    <td>${escHtml(s.sector)}</td><td>${formatNum(s.market_value)}</td>
+    <td>${s.exposure_pct.toFixed(1)}%</td><td>${s.position_count}</td>
+    <td>${escHtml(s.position_codes.join(', '))}</td>
+  </tr>`).join('');
+
+  // Candidates table
+  const ctb = document.getElementById('candidates-tbody');
+  if (result.candidate_rankings.length === 0) {
+    ctb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">No candidates</td></tr>';
+  } else {
+    ctb.innerHTML = result.candidate_rankings.map(c => {
+      const passCls = c.passes_watchlist ? 'pass' : 'fail';
+      const issues = [...c.blockers.map(b => 'BLOCK: ' + b), ...c.warnings.map(w => 'WARN: ' + w)];
+      return `<tr>
+        <td>${c.rank}</td><td>${escHtml(c.code)}</td><td>${c.signal_score}</td>
+        <td>${escHtml(c.direction)}</td><td>${escHtml(c.sector)}</td>
+        <td class="${c.expected_return_pct >= 0 ? 'positive' : 'negative'}">${c.expected_return_pct >= 0 ? '+' : ''}${c.expected_return_pct.toFixed(1)}%</td>
+        <td class="${passCls}">${c.passes_watchlist ? 'PASS' : 'FAIL'}</td>
+        <td style="font-size:11px;color:var(--text-secondary)">${escHtml(issues.join('; '))}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Stress tests
+  const stressDiv = document.getElementById('stress-results');
+  if (result.stress_results.length === 0) {
+    stressDiv.innerHTML = '<p class="placeholder-text">No stress scenarios defined.</p>';
+  } else {
+    stressDiv.innerHTML = result.stress_results.map(sr => {
+      const breachCls = sr.breaches_drawdown_limit ? ' breach' : '';
+      const lossColor = sr.total_loss_pct > 10 ? 'negative' : sr.total_loss_pct > 5 ? 'marginal' : '';
+      const posRows = sr.positions.filter(p => p.applied_shock_pct !== 0).map(p =>
+        `<tr><td>${escHtml(p.code)}</td><td>${escHtml(p.sector)}</td>
+         <td>${p.applied_shock_pct >= 0 ? '+' : ''}${p.applied_shock_pct.toFixed(1)}%</td>
+         <td class="negative">${formatNum(p.loss)}</td><td class="negative">${p.loss_pct.toFixed(1)}%</td></tr>`
+      ).join('');
+      return `<div class="stress-scenario${breachCls}">
+        <h3>${escHtml(sr.scenario_name)}</h3>
+        ${sr.description ? `<p class="stress-desc">${escHtml(sr.description)}</p>` : ''}
+        <div class="stress-summary">
+          <div class="stress-metric"><span class="metric-label">Original</span><span class="metric-value">${formatNum(sr.original_portfolio_value)}</span></div>
+          <div class="stress-metric"><span class="metric-label">Stressed</span><span class="metric-value ${lossColor}">${formatNum(sr.shocked_portfolio_value)}</span></div>
+          <div class="stress-metric"><span class="metric-label">Loss</span><span class="metric-value negative">${formatNum(sr.total_loss)} (${sr.total_loss_pct.toFixed(1)}%)</span></div>
+        </div>
+        ${posRows ? `<table class="data-table"><thead><tr><th>Code</th><th>Sector</th><th>Shock</th><th>Loss</th><th>Loss %</th></tr></thead><tbody>${posRows}</tbody></table>` : ''}
+        ${sr.breaches_drawdown_limit ? '<p style="color:var(--red);font-weight:600;margin-top:8px">BREACHES DRAWDOWN LIMIT</p>' : ''}
+      </div>`;
+    }).join('');
+  }
+
+  // Blockers & Warnings
+  const blkDiv = document.getElementById('portfolio-blockers');
+  blkDiv.innerHTML = result.blockers.map(b =>
+    `<div class="blocker-item">${escHtml(b.message)}</div>`).join('');
+
+  const wrnDiv = document.getElementById('portfolio-warnings');
+  wrnDiv.innerHTML = result.warnings.map(w =>
+    `<div class="note-item">${escHtml(w.message)}</div>`).join('');
+
+  // Show issues panel only if there are issues
+  document.getElementById('portfolio-issues-panel').style.display =
+    (result.blockers.length > 0 || result.warnings.length > 0) ? '' : 'none';
+}
+
+function runPortfolioAnalysis() {
+  const editor = document.getElementById('portfolio-editor');
+  let data;
+  try {
+    data = JSON.parse(editor.value);
+  } catch (e) {
+    alert('Invalid JSON: ' + e.message);
+    return;
+  }
+  const result = portfolioEvaluate(data);
+  renderPortfolioUI(result);
+  window._lastPortfolioResult = result;
+}
+
+// Wire portfolio tab
+document.addEventListener('DOMContentLoaded', () => {
+  const btnLoad = document.getElementById('btn-portfolio-load');
+  const btnAnalyze = document.getElementById('btn-portfolio-analyze');
+  const btnCopy = document.getElementById('btn-portfolio-copy');
+
+  if (btnLoad) {
+    btnLoad.addEventListener('click', () => {
+      document.getElementById('portfolio-editor').value = JSON.stringify(PORTFOLIO_EXAMPLE, null, 2);
+      runPortfolioAnalysis();
+    });
+  }
+  if (btnAnalyze) {
+    btnAnalyze.addEventListener('click', runPortfolioAnalysis);
+  }
+  if (btnCopy) {
+    btnCopy.addEventListener('click', () => {
+      if (window._lastPortfolioResult)
+        navigator.clipboard.writeText(JSON.stringify(window._lastPortfolioResult, null, 2)).catch(() => {});
+    });
+  }
+
+  // Add portfolio example to EXAMPLES gallery
+  if (typeof EXAMPLES !== 'undefined') {
+    EXAMPLES.portfolio_workflow = {
+      name: 'Portfolio Risk Workflow',
+      type: 'portfolio',
+      description: 'Multi-asset portfolio with 5 holdings, sector limits, risk budget, 4 candidate signals, and 4 stress scenarios.',
+      data: PORTFOLIO_EXAMPLE,
+    };
+    populateExamples();
+  }
+});

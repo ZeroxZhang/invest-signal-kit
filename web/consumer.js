@@ -227,7 +227,8 @@
     if (!store) return [];
     try {
       const raw = store.getItem('aShareCheckRecords');
-      return raw ? JSON.parse(raw) : [];
+      const records = raw ? JSON.parse(raw) : [];
+      return Array.isArray(records) ? records : [];
     } catch (_) {
       return [];
     }

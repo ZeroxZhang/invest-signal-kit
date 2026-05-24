@@ -183,6 +183,14 @@ assert(Array.isArray(ConsumerApp.loadRecords(throwingStorage)), 'loadRecords tol
 assert(ConsumerApp.loadRecords(throwingStorage).length === 0, 'blocked storage loads as empty records');
 assert(Array.isArray(ConsumerApp.saveRecord({ code: '600519' }, throwingStorage)), 'saveRecord tolerates blocked storage');
 
+const malformedStorage = {
+  value: '{"unexpected":true}',
+  getItem() { return this.value; },
+  setItem(_key, value) { this.value = value; },
+};
+assert(ConsumerApp.loadRecords(malformedStorage).length === 0, 'loadRecords ignores non-array stored data');
+assert(ConsumerApp.saveRecord({ code: '600519' }, malformedStorage).length === 1, 'saveRecord recovers from non-array stored data');
+
 const contradictedHolding = ConsumerApp.evaluateHoldingCheck({
   code: '600519',
   name: '贵州茅台',

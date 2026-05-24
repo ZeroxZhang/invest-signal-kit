@@ -162,6 +162,27 @@ assert(hasArray(holding, ['sections', 'positionWarning']), 'holding output inclu
 assert(hasArray(holding, ['sections', 'lossWarning']), 'holding output includes loss warning');
 assert(hasArray(holding, ['sections', 'actions']), 'holding output includes actions');
 
+const deepLossHolding = ConsumerApp.evaluateHoldingCheck({
+  code: '600519',
+  name: '贵州茅台',
+  costPrice: 100,
+  currentPrice: 50,
+  holdingAmount: 10000,
+  totalFunds: 50000,
+  originalReason: '长期看好公司基本面改善',
+  currentReason: '继续持有是因为基本面仍需验证',
+  maxAdditionalLoss: 9000,
+});
+assert(deepLossHolding.status === '亏损接近风险线', 'holding loss uses current value and price ratio');
+
+const throwingStorage = {
+  getItem() { throw new Error('storage blocked'); },
+  setItem() { throw new Error('quota blocked'); },
+};
+assert(Array.isArray(ConsumerApp.loadRecords(throwingStorage)), 'loadRecords tolerates blocked storage');
+assert(ConsumerApp.loadRecords(throwingStorage).length === 0, 'blocked storage loads as empty records');
+assert(Array.isArray(ConsumerApp.saveRecord({ code: '600519' }, throwingStorage)), 'saveRecord tolerates blocked storage');
+
 console.log('\n=== Consumer page shell ===');
 const html = fs.readFileSync(indexPath, 'utf8');
 assert(html.includes('A股投资检查助手'), 'page shows consumer product name');

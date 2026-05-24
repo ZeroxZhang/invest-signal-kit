@@ -137,8 +137,7 @@
     const originalReason = cleanText(data.originalReason);
     const currentReason = cleanText(data.currentReason);
     const positionPct = totalFunds > 0 ? holdingAmount / totalFunds * 100 : 0;
-    const lossPct = costPrice > 0 ? Math.max(0, (costPrice - currentPrice) / costPrice * 100) : 0;
-    const estimatedLossAmount = holdingAmount * (lossPct / 100);
+    const estimatedLossAmount = currentPrice > 0 ? holdingAmount * Math.max(0, costPrice / currentPrice - 1) : 0;
 
     if (costPrice <= 0) errors.push('请填写买入成本。');
     if (currentPrice <= 0) errors.push('请填写当前价格。');
@@ -207,8 +206,17 @@
     };
   }
 
+  function getStorage(storage) {
+    if (storage) return storage;
+    try {
+      return root.localStorage || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   function loadRecords(storage) {
-    const store = storage || (root.localStorage || null);
+    const store = getStorage(storage);
     if (!store) return [];
     try {
       const raw = store.getItem('aShareCheckRecords');
@@ -219,11 +227,15 @@
   }
 
   function saveRecord(record, storage) {
-    const store = storage || (root.localStorage || null);
+    const store = getStorage(storage);
     if (!store || !record) return [];
     const records = loadRecords(store);
     const next = [{ ...record, createdAt: new Date().toISOString() }, ...records].slice(0, 20);
-    store.setItem('aShareCheckRecords', JSON.stringify(next));
+    try {
+      store.setItem('aShareCheckRecords', JSON.stringify(next));
+    } catch (_) {
+      return records;
+    }
     return next;
   }
 

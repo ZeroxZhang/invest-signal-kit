@@ -247,6 +247,142 @@
     return next;
   }
 
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function listHtml(items) {
+    return `<ul>${(items || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+  }
+
+  function errorHtml(result) {
+    return `
+      <div class="result-card danger">
+        <span class="eyebrow">需要先补充</span>
+        <h2>现在还不能检查</h2>
+        ${listHtml(result.errors)}
+      </div>
+    `;
+  }
+
+  function renderBuyResultHtml(result) {
+    if (!result.ok) return errorHtml(result);
+    return `
+      <div class="result-card">
+        <span class="eyebrow">结论</span>
+        <h2>${escapeHtml(result.conclusion)}</h2>
+        <section><h3>主要原因</h3>${listHtml(result.sections.reasons)}</section>
+        <section><h3>风险线</h3><p>${escapeHtml(result.sections.riskLine)}</p></section>
+        <section><h3>需要补充的信息</h3>${listHtml(result.sections.missing)}</section>
+        <section><h3>下一步</h3>${listHtml(result.sections.nextSteps)}</section>
+        <p class="disclaimer">${escapeHtml(result.sections.disclaimer)}</p>
+        <button class="secondary-btn" type="button" data-save-record="buy">保存这次检查</button>
+      </div>
+    `;
+  }
+
+  function renderHoldingResultHtml(result) {
+    if (!result.ok) return errorHtml(result);
+    return `
+      <div class="result-card">
+        <span class="eyebrow">当前状态</span>
+        <h2>${escapeHtml(result.status)}</h2>
+        <section><h3>仓位提醒</h3>${listHtml(result.sections.positionWarning)}</section>
+        <section><h3>亏损提醒</h3>${listHtml(result.sections.lossWarning)}</section>
+        <section><h3>继续持有前要确认的事</h3>${listHtml(result.sections.confirmations)}</section>
+        <section><h3>可执行动作</h3>${listHtml(result.sections.actions)}</section>
+        <p class="disclaimer">${escapeHtml(result.sections.disclaimer)}</p>
+        <button class="secondary-btn" type="button" data-save-record="holding">保存这次体检</button>
+      </div>
+    `;
+  }
+
+  function formDataObject(form) {
+    const out = {};
+    new FormData(form).forEach((value, key) => { out[key] = value; });
+    return out;
+  }
+
+  function renderRecords() {
+    const list = root.document && root.document.getElementById('records-list');
+    if (!list) return;
+    const records = loadRecords();
+    if (!records.length) {
+      list.innerHTML = '<div class="empty-state"><h2>还没有检查记录</h2><p>完成一次买前检查或持仓体检后，可以保存到这里。</p></div>';
+      return;
+    }
+    list.innerHTML = records.map(record => `
+      <article class="record-item">
+        <span>${escapeHtml(record.type || '检查')}</span>
+        <h3>${escapeHtml(record.code)} ${escapeHtml(record.name)}</h3>
+        <p><strong>结论：</strong>${escapeHtml(record.conclusion)}</p>
+        <p><strong>风险线：</strong>${escapeHtml(record.riskLine || '')}</p>
+        <p><strong>下一步：</strong>${escapeHtml(record.nextStep || '')}</p>
+      </article>
+    `).join('');
+  }
+
+  function initConsumerUI() {
+    if (!root.document) return;
+    const navButtons = Array.from(root.document.querySelectorAll('.nav-btn'));
+    const views = Array.from(root.document.querySelectorAll('.view'));
+    navButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        navButtons.forEach(item => item.classList.remove('active'));
+        views.forEach(view => view.classList.remove('active'));
+        btn.classList.add('active');
+        const target = root.document.getElementById(btn.dataset.view);
+        if (target) target.classList.add('active');
+        if (btn.dataset.view === 'records') renderRecords();
+      });
+    });
+
+    let lastBuyResult = null;
+    let lastHoldingResult = null;
+    const buyForm = root.document.getElementById('buy-form');
+    const buyResult = root.document.getElementById('buy-result');
+    if (buyForm && buyResult) {
+      buyForm.addEventListener('submit', event => {
+        event.preventDefault();
+        lastBuyResult = evaluateBuyCheck(formDataObject(buyForm));
+        buyResult.innerHTML = renderBuyResultHtml(lastBuyResult);
+      });
+      buyResult.addEventListener('click', event => {
+        if (event.target && event.target.dataset.saveRecord === 'buy' && lastBuyResult && lastBuyResult.ok) {
+          saveRecord(lastBuyResult.record);
+          renderRecords();
+        }
+      });
+    }
+
+    const holdingForm = root.document.getElementById('holding-form');
+    const holdingResult = root.document.getElementById('holding-result');
+    if (holdingForm && holdingResult) {
+      holdingForm.addEventListener('submit', event => {
+        event.preventDefault();
+        lastHoldingResult = evaluateHoldingCheck(formDataObject(holdingForm));
+        holdingResult.innerHTML = renderHoldingResultHtml(lastHoldingResult);
+      });
+      holdingResult.addEventListener('click', event => {
+        if (event.target && event.target.dataset.saveRecord === 'holding' && lastHoldingResult && lastHoldingResult.ok) {
+          saveRecord(lastHoldingResult.record);
+          renderRecords();
+        }
+      });
+    }
+
+    renderRecords();
+  }
+
+  if (root.document) {
+    root.document.addEventListener('DOMContentLoaded', initConsumerUI);
+  }
+
   root.ConsumerApp = {
     ASHARE_SCOPE_MESSAGE,
     DISCLAIMER,
@@ -255,5 +391,8 @@
     evaluateHoldingCheck,
     loadRecords,
     saveRecord,
+    renderBuyResultHtml,
+    renderHoldingResultHtml,
+    initConsumerUI,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

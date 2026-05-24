@@ -220,4 +220,19 @@ for (const term of forbiddenMainCopy) {
   assert(!html.includes(term), 'consumer page avoids expert term: ' + term);
 }
 
+console.log('\n=== Consumer record helpers ===');
+const fakeStorage = {
+  value: null,
+  getItem(key) { return key === 'aShareCheckRecords' ? this.value : null; },
+  setItem(key, value) { if (key === 'aShareCheckRecords') this.value = value; },
+};
+const saved = ConsumerApp.saveRecord({ type: '买前检查', code: '600519', name: '贵州茅台', conclusion: '继续观察' }, fakeStorage);
+assert(saved.length === 1, 'saveRecord stores one item');
+const loadedRecords = ConsumerApp.loadRecords(fakeStorage);
+assert(loadedRecords[0].code === '600519', 'loadRecords returns stored item');
+assert(typeof ConsumerApp.renderBuyResultHtml === 'function', 'renderBuyResultHtml exists');
+assert(typeof ConsumerApp.renderHoldingResultHtml === 'function', 'renderHoldingResultHtml exists');
+assert(ConsumerApp.renderBuyResultHtml(goodBuy).includes('结论'), 'buy result renderer includes conclusion heading');
+assert(ConsumerApp.renderHoldingResultHtml(holding).includes('当前状态'), 'holding result renderer includes status heading');
+
 finish();

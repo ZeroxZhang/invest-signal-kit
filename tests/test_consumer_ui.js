@@ -42,6 +42,11 @@ function hasArray(obj, pathParts) {
   return Array.isArray(value) && value.length > 0;
 }
 
+function hasString(obj, pathParts) {
+  const value = valueAt(obj, pathParts);
+  return typeof value === 'string' && value.length > 0;
+}
+
 function includesText(obj, pathParts, text) {
   const value = valueAt(obj, pathParts);
   return typeof value === 'string' && value.includes(text);
@@ -122,7 +127,7 @@ const goodBuy = ConsumerApp.evaluateBuyCheck({
 assert(goodBuy.ok === true, 'complete A-share buy check succeeds');
 assert(goodBuy.conclusion === '条件满足后再考虑', 'complete reliable buy check returns conditional conclusion');
 assert(hasArray(goodBuy, ['sections', 'reasons']), 'buy check includes reasons');
-assert(hasArray(goodBuy, ['sections', 'riskLine']), 'buy check includes risk line');
+assert(hasString(goodBuy, ['sections', 'riskLine']), 'buy check includes risk line');
 assert(hasArray(goodBuy, ['sections', 'nextSteps']), 'buy check includes next steps');
 assert(includesText(goodBuy, ['sections', 'disclaimer'], '不构成投资建议'), 'buy check includes plain disclaimer');
 

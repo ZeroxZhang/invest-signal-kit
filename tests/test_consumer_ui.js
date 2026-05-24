@@ -332,6 +332,39 @@ for (const term of forbiddenMainCopy) {
   assert(!html.includes(term), 'consumer page avoids expert term: ' + term);
 }
 
+console.log('\n=== Consumer documentation ===');
+const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+const readmeIntro = readme.split(/\n##\s+/)[0];
+const readmeRequiredTerms = [
+  'A股投资检查助手',
+  '买前检查',
+  '持仓体检',
+  '只支持国内A股股票和场内ETF',
+  '不构成投资建议',
+];
+for (const term of readmeRequiredTerms) {
+  assert(readme.includes(term), 'README includes consumer term: ' + term);
+}
+
+for (const term of ['Signal Lab', 'signal JSON', 'Monte Carlo', 'Optimizer']) {
+  assert(!readmeIntro.includes(term), 'README intro does not foreground expert term: ' + term);
+}
+
+const uiDocs = fs.readFileSync(path.join(ROOT, 'docs', 'ui.md'), 'utf8');
+const uiRequiredTerms = [
+  '## 买前检查',
+  '## 持仓体检',
+  '## 检查记录',
+  '输入',
+  '输出',
+  '只支持国内A股股票和场内ETF',
+  '不构成投资建议',
+  '记录只保存在本机浏览器',
+];
+for (const term of uiRequiredTerms) {
+  assert(uiDocs.includes(term), 'docs/ui.md explains consumer workflow term: ' + term);
+}
+
 console.log('\n=== Consumer record helpers ===');
 const fakeStorage = {
   value: null,

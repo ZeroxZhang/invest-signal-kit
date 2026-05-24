@@ -1,153 +1,122 @@
-# Web UI Documentation
+# A股投资检查助手 Web 使用说明
 
-The invest-signal-kit web UI is a professional investment signal workstation. It runs entirely in the browser with no external dependencies, no build step, and no API keys.
+Web 页面面向个人投资者，默认只有三个入口：买前检查、持仓体检、检查记录。它只做风险检查和信息完整性提醒，不荐股、不下单、不承诺收益，所有结果都不构成投资建议。
 
-## Getting Started
+当前版本只支持国内A股股票和场内ETF。代码输入使用 6 位数字，例如 `600519`、`510300`。如果输入 `TSLA`、`AAPL` 这类非 6 位代码，页面会提示“当前版本只支持国内A股股票和场内ETF，请输入6位A股/ETF代码。”
 
-### Option 1: Direct file open
+## 打开方式
 
-Open `web/index.html` in a modern browser. All functionality works without a server.
+### 直接打开文件
 
-### Option 2: Local server
+在浏览器中打开：
 
-```bash
-# Using the CLI
-python3 -m invest_signal_kit serve --port 8765
-
-# Or using Python directly
-cd web && python3 -m http.server 8765
+```text
+web/index.html
 ```
 
-Then open `http://localhost:8765` in your browser.
+### 启动本地服务
 
-## Tabs
+```bash
+python3 -m invest_signal_kit serve --port 8765
+```
 
-### Signal Lab
+然后打开：
 
-The main workspace for working with signal JSON.
+```text
+http://127.0.0.1:8765
+```
 
-- **Input panel**: paste or edit signal JSON in the left panel
-- **Output panel**: validation results, scores, rendered Markdown, or framework analysis in the right panel
-- **Buttons**:
-  - **Validate**: check if the signal passes all validation rules
-  - **Score**: compute the 0-100 signal score with breakdown
-  - **Render MD**: convert signal to formatted Markdown
-  - **Full Analysis**: run the complete professional framework analysis
+页面不需要 API key，不连接券商账户，也不会自动交易。
 
-### Scorecards
+## 买前检查
 
-Interactive scorecards with sliders for real-time scoring.
+买前检查用于“准备买之前先想清楚”。它适合在你看到新闻、公告、研报、朋友推荐或价格上涨时，先检查这次买入想法有没有明显风险。
 
-- **Thesis Quality**: five factors (evidence strength, source diversity, thesis clarity, catalyst specificity, time horizon fit)
-- **Market / Price Confirmation**: five factors (trend alignment, momentum, volume/liquidity, relative strength, regime alignment)
-- **Risk & Execution Discipline**: six factors (invalidation clarity, max loss defined, position sizing discipline, liquidity/slippage, concentration risk, time stop)
-- **Decision Readiness**: visual decision ladder showing current recommended level, checklist of gate requirements, and blockers
+### 输入
 
-Each scorecard shows:
-- Per-factor scores with weights
-- Total score (0-100) with letter grade
-- Blockers that cap the maximum score
+- 股票/ETF代码：6 位国内 A 股或场内 ETF 代码。
+- 名称：方便之后回看记录。
+- 你为什么想买：选择最接近的原因，也可以补一句自己的解释。
+- 消息从哪里来：例如官方公告或财报、券商研报、财经媒体、社交平台、朋友转述、自己观察价格。
+- 准备投入多少钱：这次计划投入的金额。
+- 总投资资金：用于计算这次投入占总资金多少。
+- 最多能接受亏多少：这次想法的亏损承受上限。
+- 打算持有多久：例如 1-3 个月、3-6 个月、一年以上。
+- 什么情况你会放弃这次买入：例如业绩不及预期、跌破自己能承受的风险线、原来的理由不成立。
 
-### Scenario & Sizing
+### 输出
 
-Two panels for quantitative analysis.
+- 结论：暂缓、继续观察、条件满足后再考虑、风险过高。
+- 主要原因：系统为什么给出这个结论。
+- 风险线：这次最多愿意亏多少，以及投入金额是否过于集中。
+- 需要补充的信息：哪些信息还没有说清楚，或来源不够可靠。
+- 下一步：先补资料、降低金额、继续观察或暂缓。
+- 风险提醒：结果只做风险检查，不构成投资建议。
 
-**Expected Value / Scenario Model:**
-- Enter bull/base/bear probabilities and returns
-- See expected return, max drawdown, payoff asymmetry, and quality classification
-- Probabilities are auto-normalized if they don't sum to 1.0
+## 持仓体检
 
-**Risk-Budget Position Sizing:**
-- Enter portfolio value, max risk %, entry price, stop distance, confidence, target return
-- See risk budget, raw/adjusted shares, position value, portfolio %, and risk/reward ratio
-- Confidence haircut automatically reduces size for lower-confidence trades
+持仓体检用于“已经买了以后再检查”。它帮助你确认仓位是否太重、亏损是否接近风险线、继续持有的理由是否还成立。
 
-### Portfolio
+### 输入
 
-Portfolio risk workstation with:
-- Holdings editor (paste or load example)
-- Portfolio summary (total value, cash, invested, total risk)
-- Risk budget utilization bar
-- Position exposure table
-- Sector exposure table
-- Candidate watchlist with pass/fail criteria
-- Stress test results
-- Portfolio blockers and warnings
+- 持有代码/名称：同样只支持国内 A 股股票和场内 ETF。
+- 买入成本：你的成本价格。
+- 当前价格：现在用于自查的价格。
+- 持有金额：当前大约持有多少钱。
+- 总投资资金：用于计算仓位占比。
+- 当初为什么买：记录最初买入理由。
+- 现在还想继续持有的理由：检查理由是否发生变化。
+- 最多还能接受亏多少：从现在开始还能承受的亏损金额。
 
-### Rebalance
+### 输出
 
-Trade plan generator with:
-- Rebalance plan editor (paste or load example)
-- Before/after portfolio summary (total value, cash, invested)
-- Transaction cost summary (commission, slippage, turnover)
-- Proposed order blotter with action, shares, value, cost, phase
-- Order rationale with blockers and warnings
-- Guardrail status table (position limits, sector limits, cash reserve, turnover)
-- Execution plan grouped by phase (immediate, wait-for-trigger, reduce-risk-first, blocked)
-- Side-by-side current vs projected position tables
+- 当前状态：正常观察、仓位偏重、亏损接近风险线、理由已经失效。
+- 仓位提醒：持有金额占总资金的比例。
+- 亏损提醒：当前价格相对成本的变化，以及是否接近可承受亏损。
+- 继续持有前要确认的事：例如原来的买入理由是否仍然成立。
+- 可执行动作：继续观察、减小仓位、重新检查理由、停止加仓。
+- 风险提醒：这不是买入、卖出或持有建议。
 
-### Backtest
+## 检查记录
 
-Signal replay lab with:
-- Backtest scenario editor (paste or load example)
-- Summary metrics: performance (initial/final/return/drawdown), trade stats (count/win rate/avg return/avg R), costs & benchmark
-- ASCII equity curve visualization with drawdown and benchmark overlay
-- Equity curve table with cash, positions, total, drawdown, benchmark per date
-- Trade table with entry/exit dates, prices, P&L, return, R-multiple, holding days, exit reason
-- Event log showing all executed events with values and costs
-- Blocked/skipped events with clear block reasons (confidence gates, insufficient cash, position limits)
+检查记录用于回看你之前做过的买前检查和持仓体检，减少临时情绪对后续判断的影响。
 
-### Monte Carlo
+### 输入
 
-Monte Carlo risk simulator / drawdown lab with:
-- Config editor (paste or load example)
-- Summary metrics: configuration (simulations, horizon, method, seed), equity bands (median, mean, P5, P95), risk metrics (prob of loss, prob drawdown breach, CVaR)
-- Stress overlay display when active (shock, vol multiplier, drift)
-- Sample path visualization (ASCII bar chart showing ~20 simulation endpoints)
-- Final equity distribution histogram (20-bin ASCII)
-- Percentile table (P5 through P95)
-- Worst path summary (worst equity, worst return, worst drawdown)
-- Load Example and Load Stress Example buttons
-- Client-side deterministic simulation with seeded PRNG
+你不需要手动填写记录。完成一次买前检查或持仓体检后，点击保存按钮即可。
 
-### Decision Memo
+### 输出
 
-Generate a comprehensive Markdown decision memo that combines:
-- Signal metadata (title, instrument, direction, horizon)
-- Thesis quality scorecard with factor breakdown
-- Market confirmation scorecard
-- Risk/execution scorecard
-- Expected value analysis
-- Position sizing calculation
-- Decision readiness assessment with checklist and blockers
+每条记录会显示：
 
-Click "Generate from Scorecards" to create a memo from the current scorecard and scenario values. The memo can be copied to clipboard for sharing or archival.
+- 检查类型：买前检查或持仓体检。
+- 代码和名称。
+- 创建时间。
+- 结论或状态。
+- 主要原因。
+- 风险线。
+- 下一步。
 
-### Example Gallery
+记录只保存在本机浏览器，不会上传服务器，不会同步到云端，不会生成交易订单。清理浏览器站点数据后，本地记录也会被删除。
 
-Pre-loaded examples demonstrating different signal types and workflows:
+## 常见问题
 
-1. **ETF Candidate Signal**: valid ETF candidate with A/B evidence, trigger/invalidation, and risk controls
-2. **Stock Shift / Watch Signal**: event-driven signal at INFORMATION/WATCH level with mixed evidence
-3. **Professional Full Analysis**: complete signal with framework scorecard inputs, scenario model, and position sizing
-4. **Macro Context**: macro environment context (demonstrates macro validation)
-5. **Invalid Action Signal**: intentionally invalid action-level signal (demonstrates validation failures)
-6. **Portfolio Workflow**: multi-asset portfolio with policy, candidates, and stress scenarios
-7. **Decision Journal**: multi-decision journal with lifecycle, calibration, and attribution
-8. **Rebalance Trade Plan**: portfolio rebalance with targets, candidates, constraints, and cost assumptions
-9. **Backtest / Signal Replay**: multi-asset backtest with signals, benchmark, costs, and risk rules
+### 为什么只支持国内 A 股和场内 ETF？
 
-Click any example card to load it into the appropriate tab. Portfolio, journal, rebalance, and backtest examples load into their dedicated tabs with auto-analysis.
+当前消费者页面的规则只按 6 位国内代码做基础检查，目标是先把普通用户最常见的 A 股和场内 ETF 场景讲清楚。其他市场、港股、美股、基金申购和场外产品不在这个版本范围内。
 
-## Design Philosophy
+### 它会告诉我能不能买吗？
 
-The UI follows a professional investment workstation aesthetic:
-- Dark theme with muted colors for reduced eye strain
-- High information density without clutter
-- Monospace fonts for data and numbers
-- No marketing copy, no purple gradients, no hero sections
-- Disclaimers present but not prominent
+不会。页面只提醒你这次想法的理由、资金占比、信息来源和风险线是否清楚。任何“继续观察”或“条件满足后再考虑”都不是买入建议。
 
-## Browser Compatibility
+### 数据会上传吗？
 
-Works in all modern browsers (Chrome, Firefox, Safari, Edge). No polyfills or transpilation needed. Uses ES6+ features (arrow functions, template literals, destructuring).
+不会。检查记录只保存在本机浏览器。项目默认不连接外部服务、不连接券商账户、不读取真实持仓。
+
+### 为什么要写“什么情况会放弃”？
+
+因为没有放弃条件，就很难在价格波动或消息变化时判断自己是不是已经偏离原来的想法。这个字段用来帮你提前写下风险线。
+
+## 给开发者
+
+旧的命令行研究能力仍保留在仓库中，主要用于开发、测试和高级研究流程。普通用户不需要理解这些命令，也不需要编辑结构化文件才能使用 Web 页面。

@@ -28,7 +28,7 @@ html {
   background: var(--page-bg);
 }
 
-body {
+body.consumer-app {
   margin: 0;
   min-height: 100vh;
   background: var(--page-bg);
@@ -40,18 +40,18 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-button,
-input,
-select,
-textarea {
+.consumer-app button,
+.consumer-app input,
+.consumer-app select,
+.consumer-app textarea {
   font: inherit;
 }
 
-button {
+.consumer-app button {
   touch-action: manipulation;
 }
 
-.app-header {
+.consumer-app .app-header {
   position: sticky;
   top: 0;
   z-index: 10;
@@ -64,7 +64,7 @@ button {
   border-bottom: 1px solid var(--border);
 }
 
-.app-header h1 {
+.consumer-app .app-header h1 {
   margin: 0;
   color: var(--text);
   font-size: 24px;
@@ -73,24 +73,24 @@ button {
   letter-spacing: 0;
 }
 
-.app-header p {
+.consumer-app .app-header p {
   margin: 5px 0 0;
   color: var(--muted);
   font-size: 14px;
 }
 
-.top-nav {
+.consumer-app .top-nav {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
 }
 
-.nav-btn,
-.primary-btn,
-.secondary-btn,
-.ghost-btn {
-  min-height: 42px;
+.consumer-app .nav-btn,
+.consumer-app .primary-btn,
+.consumer-app .secondary-btn,
+.consumer-app .ghost-btn {
+  min-height: 44px;
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0 16px;
@@ -104,76 +104,76 @@ button {
   transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
 
-.nav-btn {
+.consumer-app .nav-btn {
   background: var(--surface-quiet);
 }
 
-.nav-btn:hover,
-.ghost-btn:hover {
+.consumer-app .nav-btn:hover,
+.consumer-app .ghost-btn:hover {
   border-color: #b8c7d2;
   background: #eef3f6;
 }
 
-.nav-btn.active,
-.primary-btn {
+.consumer-app .nav-btn.active,
+.consumer-app .primary-btn {
   border-color: var(--primary);
   background: var(--primary);
   color: #ffffff;
 }
 
-.primary-btn:hover {
+.consumer-app .primary-btn:hover {
   border-color: var(--primary-strong);
   background: var(--primary-strong);
 }
 
-.secondary-btn {
+.consumer-app .secondary-btn {
   border-color: var(--primary);
   background: var(--surface);
   color: var(--primary);
 }
 
-.secondary-btn:hover {
+.consumer-app .secondary-btn:hover {
   background: var(--primary-soft);
 }
 
-.ghost-btn {
+.consumer-app .ghost-btn {
   background: transparent;
   color: var(--muted);
 }
 
-.nav-btn:focus-visible,
-.primary-btn:focus-visible,
-.secondary-btn:focus-visible,
-.ghost-btn:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
+.consumer-app .nav-btn:focus-visible,
+.consumer-app .primary-btn:focus-visible,
+.consumer-app .secondary-btn:focus-visible,
+.consumer-app .ghost-btn:focus-visible,
+.consumer-app input:focus-visible,
+.consumer-app select:focus-visible,
+.consumer-app textarea:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
 
-.app-shell {
+.consumer-app .app-shell {
   width: min(1180px, calc(100% - 40px));
   margin: 24px auto 48px;
 }
 
-.view {
+.consumer-app .view {
   display: none;
 }
 
-.view.active {
+.consumer-app .view.active {
   display: block;
 }
 
-.work-area {
+.consumer-app .work-area {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(340px, 0.82fr);
   gap: 20px;
   align-items: start;
 }
 
-.tool-panel,
-.result-panel {
+.consumer-app .tool-panel,
+.consumer-app .result-panel {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -181,22 +181,22 @@ textarea:focus-visible {
   padding: 24px;
 }
 
-.result-panel {
+.consumer-app .result-panel {
   position: sticky;
   top: 94px;
   min-height: 280px;
 }
 
-.records-panel {
+.consumer-app .records-panel {
   padding: 8px 0 0;
 }
 
-.section-heading {
+.consumer-app .section-heading {
   margin-bottom: 22px;
 }
 
-.section-heading span,
-.eyebrow {
+.consumer-app .section-heading span,
+.consumer-app .eyebrow {
   display: block;
   margin-bottom: 4px;
   color: var(--primary);
@@ -205,9 +205,9 @@ textarea:focus-visible {
   letter-spacing: 0;
 }
 
-.section-heading h2,
-.empty-state h2,
-.result-card h2 {
+.consumer-app .section-heading h2,
+.consumer-app .empty-state h2,
+.consumer-app .result-card h2 {
   margin: 0;
   color: var(--text);
   font-size: 22px;
@@ -216,24 +216,24 @@ textarea:focus-visible {
   letter-spacing: 0;
 }
 
-.section-heading p,
-.empty-state p {
+.consumer-app .section-heading p,
+.consumer-app .empty-state p {
   margin: 8px 0 0;
   max-width: 760px;
   color: var(--muted);
   font-size: 15px;
 }
 
-.form-grid {
+.consumer-app .form-grid {
   display: grid;
   gap: 16px;
 }
 
-.two-cols {
+.consumer-app .two-cols {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-label {
+.consumer-app label {
   display: grid;
   gap: 7px;
   margin-bottom: 16px;
@@ -242,9 +242,9 @@ label {
   font-weight: 750;
 }
 
-input,
-select,
-textarea {
+.consumer-app input,
+.consumer-app select,
+.consumer-app textarea {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -254,63 +254,63 @@ textarea {
   line-height: 1.45;
 }
 
-input,
-select {
+.consumer-app input,
+.consumer-app select {
   min-height: 44px;
   padding: 9px 12px;
 }
 
-textarea {
+.consumer-app textarea {
   min-height: 92px;
   padding: 10px 12px;
   resize: vertical;
 }
 
-input::placeholder,
-textarea::placeholder {
+.consumer-app input::placeholder,
+.consumer-app textarea::placeholder {
   color: #8795a1;
 }
 
-input:focus,
-select:focus,
-textarea:focus {
+.consumer-app input:focus,
+.consumer-app select:focus,
+.consumer-app textarea:focus {
   border-color: var(--primary);
   outline: none;
   box-shadow: 0 0 0 3px var(--focus);
 }
 
-.form-actions {
+.consumer-app .form-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 8px;
 }
 
-.empty-state {
+.consumer-app .empty-state {
   color: var(--muted);
 }
 
-.result-card {
+.consumer-app .result-card {
   color: var(--text);
 }
 
-.result-card.danger {
+.consumer-app .result-card.danger {
   border-left: 4px solid var(--danger);
   padding-left: 16px;
 }
 
-.result-card h2 {
+.consumer-app .result-card h2 {
   margin-bottom: 14px;
   font-size: 26px;
 }
 
-.result-card section {
+.consumer-app .result-card section {
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--border);
 }
 
-.result-card h3 {
+.consumer-app .result-card h3 {
   margin: 0 0 8px;
   color: var(--text);
   font-size: 15px;
@@ -318,22 +318,22 @@ textarea:focus {
   letter-spacing: 0;
 }
 
-.result-card p {
+.consumer-app .result-card p {
   margin: 0;
   color: var(--muted);
 }
 
-.result-card ul {
+.consumer-app .result-card ul {
   margin: 0;
   padding-left: 20px;
   color: var(--muted);
 }
 
-.result-card li + li {
+.consumer-app .result-card li + li {
   margin-top: 7px;
 }
 
-.disclaimer {
+.consumer-app .disclaimer {
   margin: 18px 0 16px;
   padding: 12px 14px;
   border: 1px solid #cdded8;
@@ -343,14 +343,14 @@ textarea:focus {
   font-size: 14px;
 }
 
-.records-list {
+.consumer-app .records-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   margin-top: 18px;
 }
 
-.records-list > .empty-state {
+.consumer-app .records-list > .empty-state {
   grid-column: 1 / -1;
   border: 1px dashed var(--border);
   border-radius: var(--radius);
@@ -358,7 +358,7 @@ textarea:focus {
   padding: 24px;
 }
 
-.record-item {
+.consumer-app .record-item {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -366,7 +366,7 @@ textarea:focus {
   padding: 18px;
 }
 
-.record-item span {
+.consumer-app .record-item span {
   display: block;
   margin-bottom: 4px;
   color: var(--primary);
@@ -374,7 +374,7 @@ textarea:focus {
   font-weight: 800;
 }
 
-.record-item h3 {
+.consumer-app .record-item h3 {
   margin: 0 0 12px;
   color: var(--text);
   font-size: 18px;
@@ -382,19 +382,19 @@ textarea:focus {
   word-break: break-word;
 }
 
-.record-item p {
+.consumer-app .record-item p {
   margin: 8px 0 0;
   color: var(--muted);
   font-size: 14px;
   word-break: break-word;
 }
 
-.record-item strong {
+.consumer-app .record-item strong {
   color: var(--text);
 }
 
 @media (max-width: 900px) {
-  .app-header {
+  .consumer-app .app-header {
     position: static;
     align-items: stretch;
     flex-direction: column;
@@ -402,66 +402,66 @@ textarea:focus {
     padding: 18px;
   }
 
-  .top-nav {
+  .consumer-app .top-nav {
     justify-content: flex-start;
     overflow-x: auto;
     padding-bottom: 2px;
   }
 
-  .nav-btn {
+  .consumer-app .nav-btn {
     flex: 0 0 auto;
   }
 
-  .app-shell {
+  .consumer-app .app-shell {
     width: min(100% - 20px, 1180px);
     margin-top: 12px;
   }
 
-  .work-area,
-  .two-cols,
-  .records-list {
+  .consumer-app .work-area,
+  .consumer-app .two-cols,
+  .consumer-app .records-list {
     grid-template-columns: 1fr;
   }
 
-  .result-panel {
+  .consumer-app .result-panel {
     position: static;
     min-height: 220px;
   }
 
-  .tool-panel,
-  .result-panel {
+  .consumer-app .tool-panel,
+  .consumer-app .result-panel {
     padding: 18px;
   }
 }
 
 @media (max-width: 520px) {
-  body {
+  body.consumer-app {
     font-size: 15px;
   }
 
-  .app-header h1 {
+  .consumer-app .app-header h1 {
     font-size: 21px;
   }
 
-  .section-heading h2,
-  .empty-state h2 {
+  .consumer-app .section-heading h2,
+  .consumer-app .empty-state h2 {
     font-size: 20px;
   }
 
-  .result-card h2 {
+  .consumer-app .result-card h2 {
     font-size: 23px;
   }
 
-  .nav-btn,
-  .primary-btn,
-  .secondary-btn,
-  .ghost-btn {
-    min-height: 40px;
+  .consumer-app .nav-btn,
+  .consumer-app .primary-btn,
+  .consumer-app .secondary-btn,
+  .consumer-app .ghost-btn {
+    min-height: 44px;
     padding: 0 12px;
   }
 
-  .form-actions .primary-btn,
-  .form-actions .ghost-btn {
+  .consumer-app .form-actions .primary-btn,
+  .consumer-app .form-actions .ghost-btn {
     flex: 1 1 120px;
   }
 }

@@ -325,6 +325,7 @@ assert(html.includes('持仓体检'), 'page exposes holding check');
 assert(html.includes('检查记录'), 'page exposes records');
 assert(html.includes('consumer.js'), 'page loads consumer.js');
 assert(!html.includes('app.js'), 'page does not load expert app.js');
+assert(/<body\b[^>]*class=["'][^"']*\bconsumer-app\b/.test(html), 'page scopes consumer UI with body class');
 
 const forbiddenMainCopy = ['Signal Lab', 'Monte Carlo', 'Optimizer', 'signal JSON', 'action_level', 'trigger_condition'];
 for (const term of forbiddenMainCopy) {
@@ -448,26 +449,66 @@ assert(malformedRecordsHtml.includes('检查'), 'records render null legacy item
 
 console.log('\n=== Consumer styles ===');
 const css = fs.readFileSync(path.join(ROOT, 'web', 'styles.css'), 'utf8');
-const requiredStyleHooks = [
-  '.app-shell',
-  '.work-area',
-  '.tool-panel',
-  '.result-panel',
-  '.record-item',
-  '.primary-btn',
-  '.nav-btn',
-];
-for (const hook of requiredStyleHooks) {
-  assert(css.includes(hook), 'styles define consumer hook: ' + hook);
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
-assert(/\.view\.active\s*\{/.test(css), 'styles define active view state');
-assert(css.includes('@media'), 'styles include responsive rules');
-assert(!css.includes('Professional Workstation Theme'), 'styles remove old workstation theme banner');
-assert(!css.includes('#signal-editor'), 'styles remove old signal editor styling');
-assert(!css.includes('.output-area'), 'styles remove old JSON output styling');
-assert(!css.includes('.scorecards-grid'), 'styles remove old scorecard grid styling');
-assert(!css.includes('.decision-ladder'), 'styles remove old decision ladder styling');
-assert(!/--bg-primary:\s*#14171c/i.test(css), 'styles do not keep old dark workstation background token');
-assert(!/font-mono/i.test(css), 'styles do not keep old code-workstation font token');
+
+function selectorRegex(selector) {
+  const pattern = escapeRegExp(selector).replace(/\\ /g, '\\s+');
+  return new RegExp('(^|[{},])\\s*' + pattern + '\\s*(?=,|\\{)', 'm');
+}
+
+function hasSelector(selector) {
+  return selectorRegex(selector).test(css);
+}
+
+function mediaBlock(query) {
+  const start = css.search(new RegExp('@media\\s*\\(' + escapeRegExp(query).replace(/\\ /g, '\\s*') + '\\)'));
+  if (start < 0) return '';
+  const open = css.indexOf('{', start);
+  if (open < 0) return '';
+  let depth = 0;
+  for (let i = open; i < css.length; i += 1) {
+    if (css[i] === '{') depth += 1;
+    if (css[i] === '}') depth -= 1;
+    if (depth === 0) return css.slice(open + 1, i);
+  }
+  return '';
+}
+
+assert(/:root\s*\{[\s\S]*--page-bg:\s*#[0-9a-f]{6};[\s\S]*--surface:\s*#[0-9a-f]{6};[\s\S]*--primary:\s*#[0-9a-f]{6};[\s\S]*--radius:\s*8px;/i.test(css), 'styles define consumer design tokens');
+
+const scopedSelectors = [
+  '.consumer-app .app-shell',
+  '.consumer-app .work-area',
+  '.consumer-app .tool-panel',
+  '.consumer-app .result-panel',
+  '.consumer-app .record-item',
+  '.consumer-app .primary-btn',
+  '.consumer-app .nav-btn',
+  '.consumer-app .view.active',
+  '.consumer-app label',
+  '.consumer-app input',
+  '.consumer-app select',
+  '.consumer-app textarea',
+];
+for (const selector of scopedSelectors) {
+  assert(hasSelector(selector), 'styles define scoped selector: ' + selector);
+}
+
+assert(!hasSelector('label'), 'styles do not style all labels globally');
+assert(!hasSelector('input'), 'styles do not style all inputs globally');
+assert(!hasSelector('select'), 'styles do not style all selects globally');
+assert(!hasSelector('textarea'), 'styles do not style all textareas globally');
+assert(!hasSelector('.nav-btn'), 'styles do not style nav buttons outside consumer app');
+assert(!hasSelector('.primary-btn'), 'styles do not style primary buttons outside consumer app');
+
+const mobile520 = mediaBlock('max-width: 520px');
+assert(mobile520.length > 0, 'styles include max-width 520 mobile rules');
+assert(
+  /\.consumer-app\s+\.nav-btn\s*,\s*\.consumer-app\s+\.primary-btn\s*,\s*\.consumer-app\s+\.secondary-btn\s*,\s*\.consumer-app\s+\.ghost-btn\s*\{[^}]*min-height:\s*(?:4[4-9]|[5-9]\d)px/i.test(mobile520),
+  'mobile consumer buttons keep at least 44px min-height'
+);
 
 finish();

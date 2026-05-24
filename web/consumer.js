@@ -6,6 +6,7 @@
   const DISCLAIMER = '本结果只做风险检查，不构成投资建议，不承诺收益。';
   const RELIABLE_SOURCES = new Set(['官方公告或财报', '券商研报', '财经媒体']);
   const WEAK_SOURCES = new Set(['社交平台', '朋友转述']);
+  let uiInitialized = false;
 
   function isAshareCode(code) {
     return /^\d{6}$/.test(String(code || '').trim());
@@ -322,6 +323,7 @@
         <h3>${escapeHtml(record.code)} ${escapeHtml(record.name)}</h3>
         <p><strong>结论：</strong>${escapeHtml(record.conclusion)}</p>
         <p><strong>风险线：</strong>${escapeHtml(record.riskLine || '')}</p>
+        <p><strong>主要原因：</strong>${escapeHtml((record.keyReasons || []).join('；'))}</p>
         <p><strong>下一步：</strong>${escapeHtml(record.nextStep || '')}</p>
       </article>
     `).join('');
@@ -329,6 +331,12 @@
 
   function initConsumerUI() {
     if (!root.document) return;
+    if (uiInitialized) {
+      renderRecords();
+      return;
+    }
+    uiInitialized = true;
+
     const navButtons = Array.from(root.document.querySelectorAll('.nav-btn'));
     const views = Array.from(root.document.querySelectorAll('.view'));
     navButtons.forEach(btn => {

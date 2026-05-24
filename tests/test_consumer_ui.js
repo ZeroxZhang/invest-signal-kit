@@ -68,6 +68,117 @@ function loadConsumer() {
   }
 }
 
+class FakeClassList {
+  constructor() {
+    this.values = new Set();
+  }
+
+  add(value) {
+    this.values.add(value);
+  }
+
+  remove(value) {
+    this.values.delete(value);
+  }
+
+  contains(value) {
+    return this.values.has(value);
+  }
+}
+
+class FakeElement {
+  constructor(id, options = {}) {
+    this.id = id;
+    this.dataset = options.dataset || {};
+    this.fields = options.fields || {};
+    this.listeners = {};
+    this.classList = new FakeClassList();
+    this.innerHTML = '';
+  }
+
+  addEventListener(type, handler) {
+    this.listeners[type] = this.listeners[type] || [];
+    this.listeners[type].push(handler);
+  }
+
+  dispatch(type, event = {}) {
+    const evt = {
+      target: this,
+      preventDefault() {},
+      ...event,
+    };
+    (this.listeners[type] || []).forEach(handler => handler(evt));
+  }
+}
+
+class FakeDocument {
+  constructor() {
+    this.elements = {};
+    this.listeners = {};
+    this.navButtons = [
+      new FakeElement('nav-buy', { dataset: { view: 'buy' } }),
+      new FakeElement('nav-records', { dataset: { view: 'records' } }),
+    ];
+    this.views = [
+      new FakeElement('buy'),
+      new FakeElement('records'),
+    ];
+    this.register('buy-form', new FakeElement('buy-form'));
+    this.register('buy-result', new FakeElement('buy-result'));
+    this.register('holding-form', new FakeElement('holding-form'));
+    this.register('holding-result', new FakeElement('holding-result'));
+    this.register('records-list', new FakeElement('records-list'));
+    this.views.forEach(element => this.register(element.id, element));
+  }
+
+  register(id, element) {
+    this.elements[id] = element;
+    return element;
+  }
+
+  getElementById(id) {
+    return this.elements[id] || null;
+  }
+
+  querySelectorAll(selector) {
+    if (selector === '.nav-btn') return this.navButtons;
+    if (selector === '.view') return this.views;
+    return [];
+  }
+
+  addEventListener(type, handler) {
+    this.listeners[type] = this.listeners[type] || [];
+    this.listeners[type].push(handler);
+  }
+}
+
+class FakeFormData {
+  constructor(form) {
+    this.fields = form.fields || {};
+  }
+
+  forEach(callback) {
+    Object.entries(this.fields).forEach(([key, value]) => callback(value, key));
+  }
+}
+
+function createStorage() {
+  return {
+    value: null,
+    getItem(key) { return key === 'aShareCheckRecords' ? this.value : null; },
+    setItem(key, value) { if (key === 'aShareCheckRecords') this.value = value; },
+  };
+}
+
+function loadConsumerWithDom(document, storage) {
+  const code = fs.readFileSync(consumerPath, 'utf8');
+  const root = { document, localStorage: storage, console, FormData: FakeFormData };
+  root.globalThis = root;
+  const ctx = vm.createContext(root);
+  vm.runInContext(code, ctx);
+  return ctx.ConsumerApp;
+}
+
 console.log('\n=== Consumer rule module ===');
 const loaded = loadConsumer();
 if (loaded.error) {
@@ -234,5 +345,85 @@ assert(typeof ConsumerApp.renderBuyResultHtml === 'function', 'renderBuyResultHt
 assert(typeof ConsumerApp.renderHoldingResultHtml === 'function', 'renderHoldingResultHtml exists');
 assert(ConsumerApp.renderBuyResultHtml(goodBuy).includes('结论'), 'buy result renderer includes conclusion heading');
 assert(ConsumerApp.renderHoldingResultHtml(holding).includes('当前状态'), 'holding result renderer includes status heading');
+
+const unsafeResultHtml = ConsumerApp.renderBuyResultHtml({
+  ok: true,
+  conclusion: '<script>alert("x")</script>',
+  sections: {
+    reasons: ['理由包含 <img src=x onerror=alert(1)> 标签'],
+    riskLine: '跌破 <b>风险线</b>',
+    missing: ['补充 <em>公告</em>'],
+    nextSteps: ['不要点 <a href="#">链接</a>'],
+    disclaimer: '普通提示',
+  },
+});
+assert(!unsafeResultHtml.includes('<script>'), 'buy result renderer does not render raw script tags');
+assert(!unsafeResultHtml.includes('<img'), 'buy result renderer escapes raw reason HTML');
+assert(unsafeResultHtml.includes('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;'), 'buy result renderer includes escaped script text');
+
+console.log('\n=== Consumer DOM flow ===');
+const domStorage = createStorage();
+const domDocument = new FakeDocument();
+const DomConsumerApp = loadConsumerWithDom(domDocument, domStorage);
+domDocument.getElementById('buy-form').fields = {
+  code: '600519',
+  name: '贵州茅台<script>',
+  reasonType: '看了公告或财报',
+  reasonText: '收入和利润保持增长，想等回调后观察。',
+  sourceType: '官方公告或财报',
+  plannedAmount: 20000,
+  totalFunds: 200000,
+  maxLoss: 3000,
+  holdingPeriod: '3-6个月',
+  abandonCondition: '业绩不及预期或跌破计划风险线',
+};
+DomConsumerApp.initConsumerUI();
+domDocument.getElementById('buy-form').dispatch('submit');
+assert(domDocument.getElementById('buy-result').innerHTML.includes('保存这次检查'), 'submit renders buy save action');
+domDocument.getElementById('buy-result').dispatch('click', { target: { dataset: { saveRecord: 'buy' } } });
+const flowRecords = DomConsumerApp.loadRecords(domStorage);
+assert(flowRecords.length === 1, 'save click stores one rendered buy record');
+assert(flowRecords[0].name === '贵州茅台<script>', 'saved record keeps original user text');
+assert(domDocument.getElementById('records-list').innerHTML.includes('主要原因'), 'records render key reason heading');
+assert(!domDocument.getElementById('records-list').innerHTML.includes('<script>'), 'records escape saved name HTML');
+assert(domDocument.getElementById('records-list').innerHTML.includes('&lt;script&gt;'), 'records include escaped saved name text');
+
+const reasonStorage = createStorage();
+reasonStorage.value = JSON.stringify([{
+  type: '买前检查',
+  code: '600519',
+  name: '贵州茅台',
+  conclusion: '继续观察',
+  riskLine: '最多亏 3,000 元',
+  nextStep: '继续观察',
+  keyReasons: ['原因含 <strong>标签</strong>'],
+}]);
+const reasonDocument = new FakeDocument();
+const ReasonConsumerApp = loadConsumerWithDom(reasonDocument, reasonStorage);
+ReasonConsumerApp.initConsumerUI();
+assert(reasonDocument.getElementById('records-list').innerHTML.includes('主要原因'), 'records show keyReasons section');
+assert(!reasonDocument.getElementById('records-list').innerHTML.includes('<strong>标签</strong>'), 'records do not render raw keyReasons HTML');
+assert(reasonDocument.getElementById('records-list').innerHTML.includes('&lt;strong&gt;标签&lt;/strong&gt;'), 'records include escaped keyReasons text');
+
+const doubleInitStorage = createStorage();
+const doubleInitDocument = new FakeDocument();
+const DoubleInitConsumerApp = loadConsumerWithDom(doubleInitDocument, doubleInitStorage);
+doubleInitDocument.getElementById('buy-form').fields = {
+  code: '600519',
+  name: '贵州茅台',
+  reasonType: '看了公告或财报',
+  reasonText: '收入和利润保持增长，想等回调后观察。',
+  sourceType: '官方公告或财报',
+  plannedAmount: 20000,
+  totalFunds: 200000,
+  maxLoss: 3000,
+  holdingPeriod: '3-6个月',
+  abandonCondition: '业绩不及预期或跌破计划风险线',
+};
+DoubleInitConsumerApp.initConsumerUI();
+DoubleInitConsumerApp.initConsumerUI();
+doubleInitDocument.getElementById('buy-form').dispatch('submit');
+doubleInitDocument.getElementById('buy-result').dispatch('click', { target: { dataset: { saveRecord: 'buy' } } });
+assert(DoubleInitConsumerApp.loadRecords(doubleInitStorage).length === 1, 'double init still saves only one record per click');
 
 finish();

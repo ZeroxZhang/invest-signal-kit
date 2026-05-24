@@ -446,4 +446,28 @@ assert(malformedRecordsHtml.includes('legacy &lt;script&gt;reason&lt;/script&gt;
 assert(!malformedRecordsHtml.includes('<script>reason</script>'), 'records do not render raw legacy keyReasons HTML');
 assert(malformedRecordsHtml.includes('检查'), 'records render null legacy item with fallback type');
 
+console.log('\n=== Consumer styles ===');
+const css = fs.readFileSync(path.join(ROOT, 'web', 'styles.css'), 'utf8');
+const requiredStyleHooks = [
+  '.app-shell',
+  '.work-area',
+  '.tool-panel',
+  '.result-panel',
+  '.record-item',
+  '.primary-btn',
+  '.nav-btn',
+];
+for (const hook of requiredStyleHooks) {
+  assert(css.includes(hook), 'styles define consumer hook: ' + hook);
+}
+assert(/\.view\.active\s*\{/.test(css), 'styles define active view state');
+assert(css.includes('@media'), 'styles include responsive rules');
+assert(!css.includes('Professional Workstation Theme'), 'styles remove old workstation theme banner');
+assert(!css.includes('#signal-editor'), 'styles remove old signal editor styling');
+assert(!css.includes('.output-area'), 'styles remove old JSON output styling');
+assert(!css.includes('.scorecards-grid'), 'styles remove old scorecard grid styling');
+assert(!css.includes('.decision-ladder'), 'styles remove old decision ladder styling');
+assert(!/--bg-primary:\s*#14171c/i.test(css), 'styles do not keep old dark workstation background token');
+assert(!/font-mono/i.test(css), 'styles do not keep old code-workstation font token');
+
 finish();

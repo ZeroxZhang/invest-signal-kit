@@ -22,17 +22,45 @@ function assert(cond, msg) {
   }
 }
 
+function finish() {
+  console.log('\n' + '='.repeat(50));
+  console.log('Results: ' + passed + ' passed, ' + failed + ' failed');
+  if (failed > 0) process.exit(1);
+}
+
 function loadConsumer() {
-  const code = fs.readFileSync(consumerPath, 'utf8');
-  const ctx = vm.createContext({ console });
-  vm.runInContext(code, ctx);
-  return ctx.ConsumerApp;
+  try {
+    const code = fs.readFileSync(consumerPath, 'utf8');
+    const ctx = vm.createContext({ console });
+    vm.runInContext(code, ctx);
+    return { app: ctx.ConsumerApp, error: null };
+  } catch (err) {
+    return { app: null, error: err };
+  }
 }
 
 console.log('\n=== Consumer rule module ===');
-const ConsumerApp = loadConsumer();
+const loaded = loadConsumer();
+if (loaded.error) {
+  assert(false, 'consumer module could not be loaded: ' + loaded.error.message);
+  finish();
+}
+
+const ConsumerApp = loaded.app;
 assert(!!ConsumerApp, 'ConsumerApp is exposed for tests');
+if (!ConsumerApp) finish();
+
 assert(typeof ConsumerApp.isAshareCode === 'function', 'isAshareCode exists');
+assert(typeof ConsumerApp.evaluateBuyCheck === 'function', 'evaluateBuyCheck exists');
+assert(typeof ConsumerApp.evaluateHoldingCheck === 'function', 'evaluateHoldingCheck exists');
+if (
+  typeof ConsumerApp.isAshareCode !== 'function' ||
+  typeof ConsumerApp.evaluateBuyCheck !== 'function' ||
+  typeof ConsumerApp.evaluateHoldingCheck !== 'function'
+) {
+  finish();
+}
+
 assert(ConsumerApp.isAshareCode('600519') === true, '6-digit A-share stock code passes');
 assert(ConsumerApp.isAshareCode('510300') === true, '6-digit listed ETF code passes');
 assert(ConsumerApp.isAshareCode('TSLA') === false, 'foreign ticker fails');
@@ -119,6 +147,4 @@ for (const term of forbiddenMainCopy) {
   assert(!html.includes(term), 'consumer page avoids expert term: ' + term);
 }
 
-console.log('\n' + '='.repeat(50));
-console.log('Results: ' + passed + ' passed, ' + failed + ' failed');
-if (failed > 0) process.exit(1);
+finish();

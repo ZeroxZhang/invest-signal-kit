@@ -309,6 +309,16 @@
     return out;
   }
 
+  function normalizeRecord(record) {
+    return record && typeof record === 'object' && !Array.isArray(record) ? record : {};
+  }
+
+  function normalizeKeyReasons(keyReasons) {
+    if (Array.isArray(keyReasons)) return keyReasons;
+    if (typeof keyReasons === 'string' && keyReasons.trim()) return [keyReasons];
+    return [];
+  }
+
   function renderRecords() {
     const list = root.document && root.document.getElementById('records-list');
     if (!list) return;
@@ -317,16 +327,20 @@
       list.innerHTML = '<div class="empty-state"><h2>还没有检查记录</h2><p>完成一次买前检查或持仓体检后，可以保存到这里。</p></div>';
       return;
     }
-    list.innerHTML = records.map(record => `
-      <article class="record-item">
-        <span>${escapeHtml(record.type || '检查')}</span>
-        <h3>${escapeHtml(record.code)} ${escapeHtml(record.name)}</h3>
-        <p><strong>结论：</strong>${escapeHtml(record.conclusion)}</p>
-        <p><strong>风险线：</strong>${escapeHtml(record.riskLine || '')}</p>
-        <p><strong>主要原因：</strong>${escapeHtml((record.keyReasons || []).join('；'))}</p>
-        <p><strong>下一步：</strong>${escapeHtml(record.nextStep || '')}</p>
-      </article>
-    `).join('');
+    list.innerHTML = records.map(item => {
+      const record = normalizeRecord(item);
+      const keyReasons = normalizeKeyReasons(record.keyReasons);
+      return `
+        <article class="record-item">
+          <span>${escapeHtml(record.type || '检查')}</span>
+          <h3>${escapeHtml(record.code)} ${escapeHtml(record.name)}</h3>
+          <p><strong>结论：</strong>${escapeHtml(record.conclusion)}</p>
+          <p><strong>风险线：</strong>${escapeHtml(record.riskLine || '')}</p>
+          <p><strong>主要原因：</strong>${escapeHtml(keyReasons.join('；'))}</p>
+          <p><strong>下一步：</strong>${escapeHtml(record.nextStep || '')}</p>
+        </article>
+      `;
+    }).join('');
   }
 
   function initConsumerUI() {

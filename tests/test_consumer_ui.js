@@ -426,4 +426,24 @@ doubleInitDocument.getElementById('buy-form').dispatch('submit');
 doubleInitDocument.getElementById('buy-result').dispatch('click', { target: { dataset: { saveRecord: 'buy' } } });
 assert(DoubleInitConsumerApp.loadRecords(doubleInitStorage).length === 1, 'double init still saves only one record per click');
 
+const malformedRecordStorage = createStorage();
+malformedRecordStorage.value = JSON.stringify([
+  { code: '600519', name: '<b>贵州茅台</b>', keyReasons: 'legacy <script>reason</script>' },
+  null,
+]);
+const malformedRecordDocument = new FakeDocument();
+const MalformedRecordConsumerApp = loadConsumerWithDom(malformedRecordDocument, malformedRecordStorage);
+let malformedRenderError = null;
+try {
+  MalformedRecordConsumerApp.initConsumerUI();
+} catch (err) {
+  malformedRenderError = err;
+}
+const malformedRecordsHtml = malformedRecordDocument.getElementById('records-list').innerHTML;
+assert(malformedRenderError === null, 'records render tolerates malformed stored items');
+assert(malformedRecordsHtml.includes('主要原因'), 'records render legacy keyReasons heading');
+assert(malformedRecordsHtml.includes('legacy &lt;script&gt;reason&lt;/script&gt;'), 'records escape legacy string keyReasons');
+assert(!malformedRecordsHtml.includes('<script>reason</script>'), 'records do not render raw legacy keyReasons HTML');
+assert(malformedRecordsHtml.includes('检查'), 'records render null legacy item with fallback type');
+
 finish();

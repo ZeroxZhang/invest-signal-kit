@@ -28,6 +28,30 @@ function finish() {
   if (failed > 0) process.exit(1);
 }
 
+function valueAt(obj, pathParts) {
+  let value = obj;
+  for (const part of pathParts) {
+    if (value === null || value === undefined) return undefined;
+    value = value[part];
+  }
+  return value;
+}
+
+function hasArray(obj, pathParts) {
+  const value = valueAt(obj, pathParts);
+  return Array.isArray(value) && value.length > 0;
+}
+
+function includesText(obj, pathParts, text) {
+  const value = valueAt(obj, pathParts);
+  return typeof value === 'string' && value.includes(text);
+}
+
+function arrayIncludesText(obj, pathParts, text) {
+  const value = valueAt(obj, pathParts);
+  return Array.isArray(value) && value.includes(text);
+}
+
 function loadConsumer() {
   try {
     const code = fs.readFileSync(consumerPath, 'utf8');
@@ -79,7 +103,7 @@ const invalidCode = ConsumerApp.evaluateBuyCheck({
 });
 assert(invalidCode.ok === false, 'foreign ticker blocks buy check');
 assert(
-  invalidCode.errors.includes('当前版本只支持国内A股股票和场内ETF，请输入6位A股/ETF代码。'),
+  arrayIncludesText(invalidCode, ['errors'], '当前版本只支持国内A股股票和场内ETF，请输入6位A股/ETF代码。'),
   'foreign ticker gets domestic A-share scope message'
 );
 
@@ -97,10 +121,10 @@ const goodBuy = ConsumerApp.evaluateBuyCheck({
 });
 assert(goodBuy.ok === true, 'complete A-share buy check succeeds');
 assert(goodBuy.conclusion === '条件满足后再考虑', 'complete reliable buy check returns conditional conclusion');
-assert(goodBuy.sections.reasons.length > 0, 'buy check includes reasons');
-assert(goodBuy.sections.riskLine.length > 0, 'buy check includes risk line');
-assert(goodBuy.sections.nextSteps.length > 0, 'buy check includes next steps');
-assert(goodBuy.sections.disclaimer.includes('不构成投资建议'), 'buy check includes plain disclaimer');
+assert(hasArray(goodBuy, ['sections', 'reasons']), 'buy check includes reasons');
+assert(hasArray(goodBuy, ['sections', 'riskLine']), 'buy check includes risk line');
+assert(hasArray(goodBuy, ['sections', 'nextSteps']), 'buy check includes next steps');
+assert(includesText(goodBuy, ['sections', 'disclaimer'], '不构成投资建议'), 'buy check includes plain disclaimer');
 
 const concentratedBuy = ConsumerApp.evaluateBuyCheck({
   code: '510300',
@@ -129,9 +153,9 @@ const holding = ConsumerApp.evaluateHoldingCheck({
 });
 assert(holding.ok === true, 'holding check succeeds');
 assert(holding.status === '仓位偏重', 'holding above 30 percent flags concentration');
-assert(holding.sections.positionWarning.length > 0, 'holding output includes position warning');
-assert(holding.sections.lossWarning.length > 0, 'holding output includes loss warning');
-assert(holding.sections.actions.length > 0, 'holding output includes actions');
+assert(hasArray(holding, ['sections', 'positionWarning']), 'holding output includes position warning');
+assert(hasArray(holding, ['sections', 'lossWarning']), 'holding output includes loss warning');
+assert(hasArray(holding, ['sections', 'actions']), 'holding output includes actions');
 
 console.log('\n=== Consumer page shell ===');
 const html = fs.readFileSync(indexPath, 'utf8');

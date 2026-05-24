@@ -365,6 +365,15 @@ for (const term of uiRequiredTerms) {
   assert(uiDocs.includes(term), 'docs/ui.md explains consumer workflow term: ' + term);
 }
 
+assert(!/[-*]\s*创建时间/.test(readme), 'README records section does not list hidden created time');
+assert(!/[-*]\s*创建时间/.test(uiDocs), 'docs/ui.md records section does not list hidden created time');
+assert(/主要原因[^\n]*投入占比/.test(readme), 'README puts buy check position share under main reasons');
+assert(/主要原因[^\n]*投入占比/.test(uiDocs), 'docs/ui.md puts buy check position share under main reasons');
+assert(/风险线[^\n]*最多[^\n]*(放弃|放弃条件)/.test(readme), 'README describes buy check risk line as max loss plus abandon condition');
+assert(/风险线[^\n]*最多[^\n]*(放弃|放弃条件)/.test(uiDocs), 'docs/ui.md describes buy check risk line as max loss plus abandon condition');
+assert(!/风险线[^\n]*(仓位占比|投入占比|过于集中)/.test(readme), 'README does not put concentration in buy check risk line');
+assert(!/风险线[^\n]*(仓位占比|投入占比|过于集中)/.test(uiDocs), 'docs/ui.md does not put concentration in buy check risk line');
+
 console.log('\n=== Consumer record helpers ===');
 const fakeStorage = {
   value: null,

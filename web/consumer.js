@@ -28,6 +28,11 @@
     return String(value || '').trim();
   }
 
+  function reasonLooksContradicted(currentReason) {
+    const text = cleanText(currentReason);
+    return ['不再', '不看好', '已经不', '理由失效', '不成立', '逻辑变了'].some(term => text.includes(term));
+  }
+
   function validateCommonCode(input) {
     const errors = [];
     if (!cleanText(input.code)) errors.push('请先填写股票或ETF代码。');
@@ -122,6 +127,7 @@
         conclusion,
         riskLine: `最多亏 ${money(maxLoss)} 元`,
         nextStep: nextSteps[0],
+        keyReasons: reasons.slice(0, 3),
       },
     };
   }
@@ -175,7 +181,7 @@
       lossWarning.push('当前估算亏损距离你设置的风险线还有一定空间，但仍要按计划复查。');
     }
 
-    if (currentReason.length < 8 || currentReason === originalReason && originalReason.length < 8) {
+    if (currentReason.length < 8 || reasonLooksContradicted(currentReason) || currentReason === originalReason && originalReason.length < 8) {
       if (status === '正常观察') status = '理由已经失效';
       confirmations.push('继续持有的理由还不够清楚，请重新写下你愿意继续持有的依据。');
       actions.push('重新检查理由。');
@@ -202,6 +208,7 @@
         conclusion: status,
         riskLine: `最多再亏 ${money(maxAdditionalLoss)} 元`,
         nextStep: actions[0],
+        keyReasons: positionWarning.concat(lossWarning, confirmations).slice(0, 3),
       },
     };
   }

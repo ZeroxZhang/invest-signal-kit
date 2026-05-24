@@ -183,6 +183,21 @@ assert(Array.isArray(ConsumerApp.loadRecords(throwingStorage)), 'loadRecords tol
 assert(ConsumerApp.loadRecords(throwingStorage).length === 0, 'blocked storage loads as empty records');
 assert(Array.isArray(ConsumerApp.saveRecord({ code: '600519' }, throwingStorage)), 'saveRecord tolerates blocked storage');
 
+const contradictedHolding = ConsumerApp.evaluateHoldingCheck({
+  code: '600519',
+  name: '贵州茅台',
+  costPrice: 100,
+  currentPrice: 98,
+  holdingAmount: 5000,
+  totalFunds: 100000,
+  originalReason: '长期看好公司基本面改善',
+  currentReason: '不再看好公司基本面改善',
+  maxAdditionalLoss: 9000,
+});
+assert(contradictedHolding.status === '理由已经失效', 'contradicted holding reason invalidates status');
+assert(hasArray(goodBuy, ['record', 'keyReasons']), 'buy record includes key reasons');
+assert(hasArray(holding, ['record', 'keyReasons']), 'holding record includes key reasons');
+
 console.log('\n=== Consumer page shell ===');
 const html = fs.readFileSync(indexPath, 'utf8');
 assert(html.includes('A股投资检查助手'), 'page shows consumer product name');
